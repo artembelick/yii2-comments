@@ -1,6 +1,6 @@
-// @ts-check
-import { TEST_FILES } from "../globs.js";
 import { findAll, lineAt } from "../source.js";
+// @ts-check
+import { PRODUCT_TEST_FILES } from "../test-locations.js";
 
 /** @typedef {import("../source.js").SourceFile} SourceFile */
 /** @typedef {import("../source.js").Violation} Violation */
@@ -70,7 +70,7 @@ const testsWithoutId = ({ path, text }) => {
 /** ЧТ-1 и сверка ID: каждый тест несёт ID, и этот ID объявлен в docs/test-plans/. */
 export const testIds = {
   id: "test-ids",
-  files: TEST_FILES,
+  files: PRODUCT_TEST_FILES,
   exclude: [],
   /**
    * @param {SourceFile} file

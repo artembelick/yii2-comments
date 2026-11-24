@@ -1,8 +1,8 @@
 // @ts-check
 import { describe, expect, it } from "vitest";
 
-import { TEST_FILES } from "../globs.js";
 import { noFixedWaits } from "../rules/no-fixed-waits.js";
+import { TEST_FILES } from "../test-locations.js";
 
 const PHP = "frontend/tests/regression/ACest.php";
 const E2E = "e2e/tests/e2e/exclusive/a.spec.ts";

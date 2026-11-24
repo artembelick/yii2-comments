@@ -21,14 +21,12 @@ coverage:
   enabled: true
   include:
     - ./*
-  # Не считаются (ADR 0001): конфиги, views, миграции, entrypoint'ы, сами тесты и runtime.
+  # Не считаются (ADR 0001): конфиги, сами тесты и entrypoint runtime/ — тонкий слой над статикой Workerman
+  # без ветвлений и циклов (правило entrypoint-limits), его покрывают smoke, e2e и REG-WS.
   exclude:
     - config/*
     - views/*
     - migrations/*
-    - web/*
     - runtime/*
     - tests/*
     - messages/*
-    # Тонкий слой над статикой Workerman: без ветвлений и циклов, покрыт smoke, e2e и REG-WS.
-    - runtime/*

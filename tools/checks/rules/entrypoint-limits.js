@@ -14,7 +14,7 @@ const KEYWORDS = ["elseif", "if", "match", "switch", "foreach", "for", "while", 
  */
 export const entrypointLimits = {
   id: "entrypoint-limits",
-  files: ["ws/runtime/**/*.php", "backend/web/js/main.js"],
+  files: ["ws/runtime/**/*.php", "backend/web/js/main.js", "tools/checks/bin.js"],
   exclude: [],
   /**
    * @param {SourceFile} file

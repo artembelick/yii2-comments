@@ -1,8 +1,8 @@
 // @ts-check
 import { describe, expect, it } from "vitest";
 
-import { TEST_FILES } from "../globs.js";
 import { noSkipOnly } from "../rules/no-skip-only.js";
+import { TEST_FILES } from "../test-locations.js";
 
 describe("no-skip-only", () => {
   it.each([

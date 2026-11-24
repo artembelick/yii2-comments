@@ -1,6 +1,6 @@
+import { findAll, lineAt, maskSource } from "../source.js";
 // @ts-check
-import { TEST_FILES } from "../globs.js";
-import { findAll, maskSource } from "../source.js";
+import { TEST_FILES } from "../test-locations.js";
 
 /** @typedef {import("../source.js").SourceFile} SourceFile */
 /** @typedef {import("../source.js").Violation} Violation */
@@ -30,7 +30,14 @@ export const noRealTime = {
     const code = maskSource(file, { comments: true, strings: true });
     const withStrings = maskSource(file, { comments: true, strings: false });
 
-    return [...findAll(code, CALLS, message), ...findAll(withStrings, CONSTRUCTORS, message)].toSorted(
+    // Конструктор ищется по тексту со строками (аргумент 'now' важен), но сам он не должен стоять внутри строки.
+    const constructors = [...withStrings.matchAll(CONSTRUCTORS)].filter((match) => code.startsWith("new", match.index));
+    const constructorViolations = constructors.map((match) => ({
+      line: lineAt(code, match.index),
+      message: message(match),
+    }));
+
+    return [...findAll(code, CALLS, message), ...constructorViolations].toSorted(
       (left, right) => left.line - right.line,
     );
   },

@@ -1,8 +1,8 @@
 // @ts-check
 import { describe, expect, it } from "vitest";
 
-import { TEST_FILES } from "../globs.js";
 import { noLogicInTests } from "../rules/no-logic-in-tests.js";
+import { TEST_FILES } from "../test-locations.js";
 
 const PHP = "common/tests/unit/ATest.php";
 const JS = "backend/web/js/__tests__/a.test.js";

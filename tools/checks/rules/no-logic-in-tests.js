@@ -1,7 +1,7 @@
 // @ts-check
 import { findControlFlow } from "../control-flow.js";
-import { TEST_FILES } from "../globs.js";
 import { maskSource } from "../source.js";
+import { TEST_FILES } from "../test-locations.js";
 
 /** @typedef {import("../source.js").SourceFile} SourceFile */
 /** @typedef {import("../source.js").Violation} Violation */

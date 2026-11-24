@@ -21,7 +21,7 @@ coverage:
   enabled: true
   include:
     - ./*
-  # Не считаются (ADR 0001): конфиги, views, миграции, entrypoint'ы, сами тесты и runtime.
+  # Не считаются (ADR 0001): конфиги, views, entrypoint web/index.php, сами тесты, runtime Yii и каталоги сообщений.
   exclude:
     - config/*
     - views/*

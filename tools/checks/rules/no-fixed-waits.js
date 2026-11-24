@@ -1,6 +1,6 @@
-// @ts-check
-import { TEST_FILES } from "../globs.js";
 import { findAll, maskSource } from "../source.js";
+// @ts-check
+import { TEST_FILES } from "../test-locations.js";
 
 /** @typedef {import("../source.js").SourceFile} SourceFile */
 /** @typedef {import("../source.js").Violation} Violation */

@@ -1,8 +1,8 @@
 // @ts-check
 import { describe, expect, it } from "vitest";
 
-import { TEST_FILES } from "../globs.js";
 import { noRealTime } from "../rules/no-real-time.js";
+import { TEST_FILES } from "../test-locations.js";
 
 const PHP = "common/tests/unit/ATest.php";
 const JS = "backend/web/js/__tests__/a.test.js";
@@ -36,6 +36,7 @@ describe("no-real-time (ДТ-1)", () => {
     ["функция в строке", PHP, "<?php\n$a = 'time()';\n"],
     ["Date с аргументом", JS, "\nconst a = new Date('2026-11-24T11:05:00Z');\n"],
     ["идентификатор с date", JS, "\nconst a = formatDate(iso);\n"],
+    ["конструктор внутри строки", JS, "\nconst sample = 'new Date()';\n"],
   ])("%s → нарушений нет", (_case, path, text) => {
     expect(noRealTime.check({ path, text })).toStrictEqual([]);
   });

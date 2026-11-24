@@ -50,7 +50,11 @@ describe("entrypoint-limits", () => {
     expect(entrypointLimits.check({ path: PHP, text })).toStrictEqual([]);
   });
 
-  it("применяется к ws/runtime и main.js", () => {
-    expect(entrypointLimits.files).toStrictEqual(["ws/runtime/**/*.php", "backend/web/js/main.js"]);
+  it("применяется ко всем entrypoint'ам, исключённым из покрытия: ws/runtime, main.js и bin.js проверок", () => {
+    expect(entrypointLimits.files).toStrictEqual([
+      "ws/runtime/**/*.php",
+      "backend/web/js/main.js",
+      "tools/checks/bin.js",
+    ]);
   });
 });

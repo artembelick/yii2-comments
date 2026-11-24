@@ -1,8 +1,8 @@
 // @ts-check
 import { describe, expect, it } from "vitest";
 
-import { TEST_FILES } from "../globs.js";
 import { extractPlanIds, testIds } from "../rules/test-ids.js";
+import { PRODUCT_TEST_FILES } from "../test-locations.js";
 
 const PLAN = [
   {
@@ -93,7 +93,7 @@ describe("test-ids", () => {
     ]);
   });
 
-  it("применяется ко всем тестам проекта", () => {
-    expect(testIds.files).toStrictEqual(TEST_FILES);
+  it("применяется к тестам продукта: тесты проверок не описаны в тест-планах", () => {
+    expect(testIds.files).toStrictEqual(PRODUCT_TEST_FILES);
   });
 });

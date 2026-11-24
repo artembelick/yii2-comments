@@ -1,6 +1,6 @@
 # Всё запускается в контейнерах: на хосте нужны только Docker и make.
 #
-# Dev-стенд:      make up / make down / make migrate / make admin
+# Dev-стенд:      make up / make down / make migrate
 # Проверки:       make check = lint → unit → smoke → regression → e2e, первый красный шаг останавливает цепочку.
 #                 Интеграционные наборы идут на отдельном тестовом стенде (compose-проект comments-test),
 #                 который make check поднимает и после прогона сносит.
@@ -19,6 +19,8 @@ PHP_RUN := $(STAND) run --rm --no-deps -T php
 NODE_RUN := $(STAND) run --rm --no-deps -T node
 # На поднятом стенде.
 PHP_STAND := $(STAND) exec -T php
+# Пустые проекты Playwright не падают, пока в них нет тестов: smoke и e2e-parallel заполняет срез 02,
+# REG-WS — срез 04. Срез 04 убирает флаг: проект без тестов значит сломанный testDir.
 PLAYWRIGHT := $(STAND) run --rm -T playwright npx playwright test --pass-with-no-tests
 
 CODECEPT_SEED := $(if $(SEED),--seed $(SEED),)
@@ -58,7 +60,7 @@ install: .env ## Поставить зависимости PHP и JS
 migrate: ## Применить миграции на dev-стенде
 	$(DEV) exec -T php ./yii migrate --interactive=0
 
-admin: ## Создать админа для smoke на тестовом стенде (логин и пароль из .env.test). Команда появляется в срезе 02
+admin: ## Создать админа для smoke на тестовом стенде (логин и пароль из .env.test). Команда admin/create появляется в срезе 02
 	$(PHP_STAND) sh -c './yii admin/create "$$SMOKE_ADMIN_LOGIN" "$$SMOKE_ADMIN_PASSWORD"'
 
 # --- Линтеры -----------------------------------------------------------------
@@ -119,7 +121,7 @@ test-unit: test-unit-php test-unit-js ## Unit PHP и JS с порогом пок
 # Unit-тесты репозиториев ходят в тестовую Postgres, поэтому PHP-unit идёт на поднятом стенде.
 test-unit-php: stand-up
 	rm -rf tests/_output/coverage-php.xml tests/_output/junit-php.xml
-	$(PHP_STAND) vendor/bin/codecept run '*::unit' $(CODECEPT_SEED) \
+	$(PHP_STAND) php -d pcov.enabled=1 vendor/bin/codecept run '*::unit' $(CODECEPT_SEED) \
 		--xml junit-php.xml --coverage-xml coverage-php.xml --coverage-cobertura cobertura-php.xml
 	$(NODE_RUN) node tools/checks/bin.js junit tests/_output/junit-php.xml
 	$(NODE_RUN) node tools/checks/bin.js coverage tests/_output/coverage-php.xml --strip=/app/

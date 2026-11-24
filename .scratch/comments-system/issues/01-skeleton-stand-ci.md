@@ -55,3 +55,16 @@
 - [ ] lefthook: pre-commit линтеры по изменённым файлам, pre-push `make test-unit`
 - [ ] GitHub Actions по таблице «Запуски» из `docs/test-plans/README.md`: push → lint и unit; PR и `main` → весь `make check`, разбитый на jobs, с шардами яруса `parallel`; ночной двойной прогон с разными seed. Отчёты и trace сохраняются как артефакты
 - [ ] Обе части отвечают 200, порт nginx записан в README
+
+## Comments
+
+**Реализация (ветка `slice/01-skeleton`).** Решения из таблицы «Стек и конфиг», которые требуют кода, перенесены в срез, где появляется первый потребитель, чтобы не заводить код без тестов и без пользователей:
+
+- `common\redis\RedisClientInterface` и адаптер над `yiisoft/yii2-redis` — срез 02 (RateLimiter, RL-01…05). Пакет установлен, компонент `redis` и сессии админки в Redis под `session:` настроены.
+- Регистрация `NativeClock` как `Psr\Clock\ClockInterface` в DI — срез 02 (первый класс со временем). `symfony/clock` установлен.
+- Seed Faker из ID теста для PHP-фикстур — срез 02 (UNIT-FIX-01, FIX-02). TS-часть есть в `e2e/support/faker.ts`.
+- `make admin` вызывает `./yii admin/create`, который появляется в срезе 02 (CLI-04). Там же `make check` начинает вызывать его перед smoke.
+
+Временные послабления, которые снимают следующие срезы: `--allow-empty` у `tools/checks` (срез 02), `--pass-with-no-tests` у Playwright (срез 04), заглушка `PlaceholderController` и UNIT-SKEL-01 (срезы 02 и 03).
+
+Отклонение от плана: «правило линтера требует `expect.hasAssertions()`» заменено на `expect.requireAssertions` в конфиге Vitest, строгость PHPUnit поверх Codeception — на `tools/checks junit`. `docs/test-plans/README.md` поправлен.

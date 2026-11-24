@@ -11,8 +11,8 @@ const MARKERS =
 export const noInlineDisable = {
   id: "no-inline-disable",
   files: ["**/*.{php,js,mjs,cjs,ts}"],
-  // В самих проверках маркеры перечислены как данные.
-  exclude: ["tools/checks/**"],
+  // Само правило перечисляет маркеры как данные; деревья-фикстуры CLI содержат нарушения намеренно.
+  exclude: ["tools/checks/rules/no-inline-disable.js", "tools/checks/__tests__/fixtures/**"],
   /**
    * @param {SourceFile} file
    * @returns {Violation[]}

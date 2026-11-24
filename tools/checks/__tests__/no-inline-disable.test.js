@@ -41,10 +41,10 @@ describe("no-inline-disable", () => {
     expect(noInlineDisable.check({ path, text })).toStrictEqual([]);
   });
 
-  it("применяется к PHP, JS и TS по всему проекту, кроме самих проверок", () => {
+  it("применяется к PHP, JS и TS по всему проекту, кроме самого правила и деревьев-фикстур", () => {
     expect({ files: noInlineDisable.files, exclude: noInlineDisable.exclude }).toStrictEqual({
       files: ["**/*.{php,js,mjs,cjs,ts}"],
-      exclude: ["tools/checks/**"],
+      exclude: ["tools/checks/rules/no-inline-disable.js", "tools/checks/__tests__/fixtures/**"],
     });
   });
 });
