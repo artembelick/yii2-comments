@@ -25,6 +25,8 @@ final class FixturesModule extends Module
 
     private int $seed = 0;
 
+    private string $runId = '';
+
     private int $loaded = 0;
 
     #[Override]
@@ -34,7 +36,8 @@ final class FixturesModule extends Module
         $faker = Factory::create('ru_RU');
         $faker->seed($this->seed);
 
-        $this->factory = new FixtureFactory($faker, (string) getenv('TEST_RUN_ID'));
+        $this->runId = (string) getenv('TEST_RUN_ID');
+        $this->factory = new FixtureFactory($faker, $this->runId);
         $this->loaded = 0;
     }
 
@@ -42,7 +45,7 @@ final class FixturesModule extends Module
     public function _failed(TestInterface $test, mixed $fail): void
     {
         $test->getMetadata()->addReport('faker-seed', (string) $this->seed);
-        $test->getMetadata()->addReport('test-run-id', (string) getenv('TEST_RUN_ID'));
+        $test->getMetadata()->addReport('test-run-id', $this->runId);
     }
 
     public function fixtureFactory(): FixtureFactory

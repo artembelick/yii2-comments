@@ -43,11 +43,12 @@ make check
 | `make test-unit` | Codeception unit (pcov) и Vitest, порог покрытия 100% |
 | `make test-smoke`, `make test-regression`, `make test-e2e` | Интеграционные наборы на поднятом тестовом стенде (`make stand-up`, затем `make admin` для smoke) |
 | `make test-rerun` | Тесты стенда дважды на одном стенде без его пересоздания (второй раз без яруса `pristine`), с разными `TEST_RUN_ID` и seed |
+| `make test-no-pristine` | Regression без яруса `pristine`, REG-WS и e2e на поднятом стенде: можно запускать повторно на том же стенде |
 | `make coverage` | Отчёты покрытия в `tests/_output` |
 | `make fix` | Автоисправление стиля |
 | `make help` | Все цели |
 
-Тесты идут в случайном порядке, seed печатается в начале прогона. Повторить порядок: `SEED=<число> make test-unit`. Метки тестовых данных начинаются с id прогона `TEST_RUN_ID`: Makefile генерирует его и печатает в начале, он же стоит в отчёте о падении. Воспроизвести падение на свежем стенде: `TEST_RUN_ID=<id> SEED=<число> make check`.
+Тесты идут в случайном порядке, seed печатается в начале прогона. Повторить порядок: `SEED=<число> make test-unit`. Метки тестовых данных начинаются с id прогона `TEST_RUN_ID`: Makefile генерирует его и печатает в начале, он же стоит в отчёте о падении. Воспроизвести падение на свежем стенде: `TEST_RUN_ID=<id> SEED=<число> make check`. Падение второго прохода `make test-rerun` повторяет он же с обоими id и seed, которые напечатал: `TEST_RUN_ID=<id 1> TEST_RUN_ID_2=<id 2> SEED=<число> make test-rerun`.
 
 Свои проверки (`tools/checks`) запрещают inline-отключения линтеров, `skip` и `only`, логику и реальное время в тестах, CSS-локаторы в `/e2e`, нестрогие проверки, ветвления в entrypoint'ах и сверяют ID в именах тестов с `docs/test-plans/`. Правила и их причины — в `tools/checks/rules/`.
 

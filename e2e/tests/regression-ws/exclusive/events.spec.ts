@@ -1,7 +1,8 @@
 import { issueWsToken, submitAdminForm } from "../../../support/admin.ts";
-import { comment, uniqueTag } from "../../../support/factories.ts";
+import { comment } from "../../../support/factories.ts";
 import type { Comment, CommentOverrides } from "../../../support/factories.ts";
 import { postComment } from "../../../support/guest.ts";
+import { uniqueTag } from "../../../support/tag.ts";
 import { expect, test } from "../../../support/test.ts";
 
 const UNAUTHORIZED = 4401;

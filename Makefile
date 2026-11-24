@@ -6,7 +6,9 @@
 #                 который make check поднимает и после прогона сносит.
 # Повтор порядка: SEED=<число> make test-unit (seed печатают Codeception и Vitest в начале прогона).
 # Повтор падения: TEST_RUN_ID=<id> SEED=<число> make check — id прогона и seed из отчёта, на свежем стенде.
-# Повтор на стенде: make test-rerun — тесты стенда дважды на одном стенде (ИЗ-1).
+# Повтор на стенде: make test-rerun — тесты стенда дважды на одном стенде (ИЗ-1). Падение второго прохода
+#                 повторяет он же: TEST_RUN_ID=<id 1> TEST_RUN_ID_2=<id 2> SEED=<seed 1> make test-rerun.
+#                 Вручную: make stand-up, затем make test-no-pristine два раза подряд.
 # Шарды CI:       SHARD=<i>/<n> make test-regression-parallel и т. п. — только для яруса parallel.
 
 SHELL := /bin/bash
@@ -18,14 +20,19 @@ STAND := docker compose -p comments-test --env-file .env.test -f docker-compose.
 
 # Id прогона (ИЗ-1, ДТ-2): начало каждой метки тестовых данных. Один на весь прогон, вложенные make получают его
 # через окружение. Без него повторный прогон на том же стенде повторил бы метки прошлого.
-RANDOM_RUN_ID := od -An -N4 -tu1 /dev/urandom | awk '{ for (i = 1; i <= NF; i++) printf "%s", substr("abcdefghijklmnopqrstuvwxyz0123456789", $$i % 36 + 1, 1) }'
+# Байты от 252 отбрасываются: 252 = 7 × 36, так символы равновероятны. 64 байт хватает с запасом.
+RANDOM_RUN_ID := od -An -N64 -tu1 /dev/urandom | awk '{ for (i = 1; i <= NF; i++) if ($$i < 252 && n < 4) { printf "%s", substr("abcdefghijklmnopqrstuvwxyz0123456789", $$i % 36 + 1, 1); n++ } }'
 ifndef TEST_RUN_ID
 TEST_RUN_ID := $(shell $(RANDOM_RUN_ID))
-ifneq ($(filter check test-%,$(MAKECMDGOALS)),)
-$(info [make] TEST_RUN_ID=$(TEST_RUN_ID). Повторить на свежем стенде: TEST_RUN_ID=$(TEST_RUN_ID) SEED=<seed из отчёта> make $(MAKECMDGOALS))
-endif
 endif
 export TEST_RUN_ID
+# Печатается один раз, в make верхнего уровня, и для заданного снаружи id тоже. Unit id не нужен,
+# а make test-rerun печатает оба id сам.
+ifeq ($(MAKELEVEL),0)
+ifneq ($(filter-out test-unit test-unit-php test-unit-js test-rerun,$(filter check test-%,$(MAKECMDGOALS))),)
+$(info [make] TEST_RUN_ID=$(TEST_RUN_ID). Повторить: TEST_RUN_ID=$(TEST_RUN_ID) SEED=<seed из отчёта>$(if $(SHARD), SHARD=$(SHARD)) make $(MAKECMDGOALS))
+endif
+endif
 
 # Без стенда: линтеры и сборка.
 PHP_RUN := $(STAND) run --rm --no-deps -T php
@@ -50,7 +57,7 @@ PLAYWRIGHT_SHARD := $(if $(SHARD),--shard=$(SHARD),)
 	stand-up stand-down stand-logs test-unit test-unit-php test-unit-js test-smoke test-regression \
 	test-regression-pristine test-regression-parallel test-regression-exclusive \
 	test-regression-ws-parallel test-regression-ws-exclusive test-e2e test-e2e-parallel test-e2e-exclusive \
-	coverage check test-rerun
+	test-no-pristine coverage check test-rerun run-id
 
 help: ## Список целей
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-30s %s\n", $$1, $$2}'
@@ -81,7 +88,7 @@ admin: ## Создать админа для smoke на тестовом сте�
 	@exists=$$($(PSQL_STAND) 'echo "SELECT count(*) FROM \"user\" WHERE username = :'\''login'\''" \
 		| psql -tAq -v ON_ERROR_STOP=1 -v login="$$SMOKE_ADMIN_LOGIN" -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'); \
 	if [ "$$exists" = "1" ]; then \
-		echo "Админ для smoke уже есть: ничего не меняю"; \
+		echo "Админ для smoke уже есть: ничего не меняю (пароль и статус не проверялись)"; \
 	else \
 		$(PHP_STAND) sh -c 'printf "%s\n" "$$SMOKE_ADMIN_PASSWORD" | ./yii admin/create "$$SMOKE_ADMIN_LOGIN"'; \
 	fi
@@ -164,8 +171,10 @@ test-regression: test-regression-pristine test-regression-parallel test-regressi
 
 # Ярусу нужна пустая БД, поэтому он сам пересоздаёт БД стенда: так он проходит и на стенде после прошлых прогонов.
 # Исключение из ИЗ-1 (docs/test-plans/rules.md): повторный проход make test-rerun его не включает.
+# Проверка имени БД — страховка: стереть можно только comments_test.
 test-regression-pristine:
-	$(PSQL_STAND) 'psql -q -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"'
+	$(PSQL_STAND) '[ "$$POSTGRES_DB" = comments_test ] || { echo "pristine пересоздаёт только БД comments_test, а не $$POSTGRES_DB" >&2; exit 1; }; \
+		psql -q -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"'
 	$(PHP_STAND) ./yii migrate --interactive=0
 	$(PHP_STAND) vendor/bin/codecept run '*::regression' -g pristine $(CODECEPT_SEED) --xml junit-regression-pristine.xml
 	$(NODE_RUN) node tools/checks/bin.js junit tests/_output/junit-regression-pristine.xml
@@ -186,6 +195,10 @@ test-regression-ws-exclusive:
 
 test-e2e: test-e2e-parallel test-e2e-exclusive ## E2E (Playwright): сначала parallel, затем exclusive
 
+# Повтор на том же стенде (ИЗ-1): всё, что повторяется без пересоздания БД. Второй проход make test-rerun и ручная проверка.
+NO_PRISTINE := test-regression-parallel test-regression-exclusive test-regression-ws-parallel test-regression-ws-exclusive test-e2e
+test-no-pristine: $(NO_PRISTINE) ## regression без pristine, REG-WS и e2e на поднятом стенде (можно повторять на том же стенде)
+
 test-e2e-parallel:
 	$(PLAYWRIGHT) --project=e2e-parallel $(PLAYWRIGHT_SHARD)
 
@@ -202,19 +215,28 @@ check: ## lint → unit → админ для smoke → smoke → regression →
 	trap '$(MAKE) stand-down' EXIT; \
 		$(MAKE) test-unit && $(MAKE) admin && $(MAKE) test-smoke && $(MAKE) test-regression && $(MAKE) test-e2e
 
-# ИЗ-1: повторный прогон на том же стенде. Первый проход — как в make check без lint и unit, второй — всё, кроме pristine,
-# без stand-down, с другим TEST_RUN_ID и другим seed порядка.
-test-rerun: ## smoke → regression → e2e дважды на одном стенде (второй раз без pristine), после прогона стенд сносится
+# ИЗ-1: повторный прогон на том же стенде. Первый проход: pristine → admin → smoke → остальное. pristine идёт раньше admin,
+# чтобы не стереть админа: тогда make admin второго прохода упирается в существующего и проверяет идемпотентность.
+# Второй проход — всё, кроме pristine, без stand-down, с другим TEST_RUN_ID (TEST_RUN_ID_2) и другим seed порядка.
+test-rerun: ## pristine → admin → smoke → regression → e2e, затем всё, кроме pristine, ещё раз на том же стенде; после прогона стенд сносится
 	$(MAKE) stand-down
 	trap '$(MAKE) stand-down' EXIT; \
 		first_seed=$(if $(SEED),$(SEED),$$(od -An -N4 -tu4 /dev/urandom | awk 'NF { print $$1 % 2147483647; exit }')); \
 		second_seed=$$(( first_seed % 2147483646 + 1 )); \
-		second_run_id=$(TEST_RUN_ID); \
-		while [ "$$second_run_id" = "$(TEST_RUN_ID)" ]; do second_run_id=$$($(RANDOM_RUN_ID)); done; \
+		second_run_id='$(TEST_RUN_ID_2)'; \
+		if [ -z "$$second_run_id" ]; then \
+			until [ -n "$$second_run_id" ] && [ "$$second_run_id" != "$(TEST_RUN_ID)" ]; do second_run_id=$$($(RANDOM_RUN_ID)); done; \
+		fi; \
+		[ "$$second_run_id" != "$(TEST_RUN_ID)" ] || { echo "TEST_RUN_ID_2 должен отличаться от TEST_RUN_ID" >&2; exit 1; }; \
+		echo "[test-rerun] TEST_RUN_ID=$(TEST_RUN_ID) TEST_RUN_ID_2=$$second_run_id SEED=$$first_seed (второй проход: seed $$second_seed)"; \
+		echo "[test-rerun] Повторить: TEST_RUN_ID=$(TEST_RUN_ID) TEST_RUN_ID_2=$$second_run_id SEED=$$first_seed make test-rerun"; \
 		echo "[test-rerun] проход 1: TEST_RUN_ID=$(TEST_RUN_ID) SEED=$$first_seed"; \
-		$(MAKE) stand-up && $(MAKE) admin && $(MAKE) test-smoke && $(MAKE) test-regression SEED=$$first_seed && $(MAKE) test-e2e && \
+		$(MAKE) stand-up && $(MAKE) test-regression-pristine SEED=$$first_seed && $(MAKE) admin && $(MAKE) test-smoke && \
+		$(MAKE) test-no-pristine SEED=$$first_seed && \
 		echo "[test-rerun] проход 2 на том же стенде: TEST_RUN_ID=$$second_run_id SEED=$$second_seed" && \
 		$(MAKE) admin TEST_RUN_ID=$$second_run_id && $(MAKE) test-smoke TEST_RUN_ID=$$second_run_id && \
-		$(MAKE) test-regression-parallel test-regression-exclusive test-regression-ws-parallel test-regression-ws-exclusive \
-			TEST_RUN_ID=$$second_run_id SEED=$$second_seed && \
-		$(MAKE) test-e2e TEST_RUN_ID=$$second_run_id
+		$(MAKE) test-no-pristine TEST_RUN_ID=$$second_run_id SEED=$$second_seed
+
+# CI генерирует id первым шагом job и кладёт его в $GITHUB_ENV: каждый шаг — отдельный make, а id нужен один на job.
+run-id: ## Напечатать TEST_RUN_ID (сгенерированный, если не задан)
+	@echo $(TEST_RUN_ID)

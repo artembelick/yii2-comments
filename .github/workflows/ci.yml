@@ -50,6 +50,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/install
+      # Один TEST_RUN_ID на job: каждый шаг ниже — отдельный make и иначе сгенерировал бы свой.
+      - name: TEST_RUN_ID
+        run: |
+          run_id=$(make -s run-id)
+          echo "TEST_RUN_ID=$run_id"
+          echo "TEST_RUN_ID=$run_id" >> "$GITHUB_ENV"
       - run: make stand-up
       - run: make admin
       - run: make test-smoke
@@ -74,6 +80,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/install
+      # Один TEST_RUN_ID на job: каждый шаг ниже — отдельный make и иначе сгенерировал бы свой.
+      - name: TEST_RUN_ID
+        run: |
+          run_id=$(make -s run-id)
+          echo "TEST_RUN_ID=$run_id"
+          echo "TEST_RUN_ID=$run_id" >> "$GITHUB_ENV"
       - run: make stand-up
       - run: make admin
       - run: make test-smoke

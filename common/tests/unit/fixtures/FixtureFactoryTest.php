@@ -50,17 +50,19 @@ final class FixtureFactoryTest extends Unit
     #[TestDox('UNIT-FIX-02: при одном seed и разных TEST_RUN_ID метки разные')]
     public function testSameSeedInDifferentRunsGivesDifferentTags(): void
     {
-        $tags = [$this->firstTag(seed: 42, runId: 'k3x9'), $this->firstTag(seed: 42, runId: 'p7q2')];
+        $firstRunTag = $this->factory(seed: 42, runId: 'k3x9')->tag();
+        $secondRunTag = $this->factory(seed: 42, runId: 'p7q2')->tag();
 
-        self::assertNotSame($tags[0], $tags[1]);
+        self::assertNotSame($firstRunTag, $secondRunTag);
     }
 
     #[TestDox('UNIT-FIX-02: при одном seed и одном TEST_RUN_ID метки одинаковые')]
     public function testSameSeedInSameRunGivesSameTag(): void
     {
-        $tags = [$this->firstTag(seed: 42, runId: 'k3x9'), $this->firstTag(seed: 42, runId: 'k3x9')];
+        $firstTag = $this->factory(seed: 42, runId: 'k3x9')->tag();
+        $sameRunTag = $this->factory(seed: 42, runId: 'k3x9')->tag();
 
-        self::assertSame($tags[0], $tags[1]);
+        self::assertSame($firstTag, $sameRunTag);
     }
 
     #[TestDox('UNIT-FIX-03: метка — TEST_RUN_ID и 4 символа [a-z0-9] из Faker')]
@@ -97,12 +99,7 @@ final class FixtureFactoryTest extends Unit
         ];
     }
 
-    /** Первая метка генератора. Faker сеет общий mt_rand, поэтому метка берётся сразу после seed. */
-    private function firstTag(int $seed, string $runId): string
-    {
-        return $this->factory($seed, $runId)->tag();
-    }
-
+    /** Генератор с Faker на этом seed. Faker сеет общий mt_rand, поэтому метку берут сразу после создания генератора. */
     private function factory(int $seed, string $runId): FixtureFactory
     {
         $faker = Factory::create('ru_RU');

@@ -1,7 +1,8 @@
 import { listRow } from "../../../support/admin.ts";
 import { requireEnv } from "../../../support/env.ts";
-import { admin, comment, uniqueTag } from "../../../support/factories.ts";
+import { admin, comment } from "../../../support/factories.ts";
 import { message } from "../../../support/messages.ts";
+import { uniqueTag } from "../../../support/tag.ts";
 import { expect, test } from "../../../support/test.ts";
 
 test("E2E-01: путь комментария от формы до админки", async ({ page: admin1Page, guest, db, faker }) => {

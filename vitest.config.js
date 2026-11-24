@@ -49,7 +49,8 @@ export default defineConfig({
     ],
     coverage: {
       provider: "v8",
-      include: ["backend/web/js/**/*.js", "tools/**/*.js"],
+      // Из хелперов /e2e без стенда проверяется только правило метки: остальное ходит в БД, Redis и браузер.
+      include: ["backend/web/js/**/*.js", "tools/**/*.js", "e2e/support/tag.ts"],
       exclude: [
         "**/__tests__/**",
         // Entry point'ы: только связывают модули, ветвлений в них нет (проверяет tools/checks, правило entrypoint-limits).

@@ -1,7 +1,8 @@
 import { logIn } from "../../../support/admin.ts";
 import { requireEnv } from "../../../support/env.ts";
-import { admin, uniqueTag } from "../../../support/factories.ts";
+import { admin } from "../../../support/factories.ts";
 import { message } from "../../../support/messages.ts";
+import { uniqueTag } from "../../../support/tag.ts";
 import { expect, test } from "../../../support/test.ts";
 
 test("E2E-05: разметка в комментарии, пришедшем по WS, показана текстом и не исполняется", async ({

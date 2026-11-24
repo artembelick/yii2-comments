@@ -2,6 +2,7 @@ import type { Faker } from "@faker-js/faker";
 import { Pool } from "pg";
 
 import { requireEnv } from "./env.ts";
+import { uniqueTag } from "./tag.ts";
 
 /**
  * Единственное место, где /e2e знает схему БД. Фабрики пишут предусловия прямо в Postgres стенда,
@@ -16,26 +17,6 @@ export function connectDb(): Pool {
     password: requireEnv("POSTGRES_PASSWORD"),
     max: 2,
   });
-}
-
-/** Id прогона: одна строка на весь прогон, её генерирует Makefile (docs/test-plans/README.md, «Работа с данными»). */
-const RUN_ID = /^[a-z0-9]{4}$/u;
-/** Часть метки из Faker: одинакова во всех прогонах теста (ДТ-2). */
-const FAKER_TAG_LENGTH = 4;
-
-/**
- * Уникальная метка теста: по ней тест находит свои строки и проверяет только их (ИЗ-3). Начинается с id прогона
- * TEST_RUN_ID: он отделяет её от меток того же теста в прошлых прогонах на том же стенде (ИЗ-1).
- * Правило то же, что у PHP-фикстур (FixtureFactory::tag).
- */
-export function uniqueTag(faker: Faker, runId: string | undefined = process.env["TEST_RUN_ID"]): string {
-  if (runId === undefined || !RUN_ID.test(runId)) {
-    throw new Error(
-      `TEST_RUN_ID должен быть из 4 символов [a-z0-9], а получено «${runId ?? ""}». Его задаёт Makefile; при запуске Playwright напрямую передайте TEST_RUN_ID в окружение.`,
-    );
-  }
-
-  return runId + faker.string.alphanumeric({ length: FAKER_TAG_LENGTH, casing: "lower" });
 }
 
 /** Пароль всех админов из фабрики. Хэш посчитан заранее с cost 4: bcrypt на каждого админа замедлил бы тесты. */
