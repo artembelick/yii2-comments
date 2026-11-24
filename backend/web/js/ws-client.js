@@ -4,6 +4,9 @@ import { UnauthorizedError } from "./unauthorized-error.js";
 /** Клиент шлёт ping, чтобы прокси и сервер не закрыли тихое соединение (ADR 0002). */
 const PING_INTERVAL_MS = 25_000;
 
+/** Код закрытия «сессия завершена» (logout, блокировка, смена пароля): переподключаться бессмысленно (ADR 0002). */
+const SESSION_ENDED = 4403;
+
 /** События комментариев, которые рассылает WS-сервер (docs/test-plans/regression.md, «WS-контракты»). */
 const COMMENT_EVENTS = new Set(["comment.created", "comment.updated", "comment.deleted", "comment.restored"]);
 
@@ -151,9 +154,14 @@ class WsClient {
         this.#deps.onEvent(message);
       }
     });
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       this.#deps.timers.clearInterval(this.#pingTimer);
-      this.#scheduleReconnect();
+      if (event.code === SESSION_ENDED) {
+        this.#deps.onStatus("offline");
+        this.#deps.navigateToLogin();
+      } else {
+        this.#scheduleReconnect();
+      }
     });
   }
 
@@ -184,7 +192,8 @@ class WsClient {
 
 /**
  * Соединение админки с WS-сервером (ADR 0002): одноразовый токен, auth первым сообщением, ping каждые 25 секунд.
- * После любого разрыва — пауза backoff, новый токен и новое соединение. Токен не выдали (401) — на логин.
+ * После разрыва — пауза backoff, новый токен и новое соединение. Токен не выдали (401) или сервер закрыл
+ * соединение с 4403 (сессия завершена) — на логин без переподключения.
  *
  * @param {WsClientDependencies} dependencies
  * @returns {{ start(): void, stop(): void }}

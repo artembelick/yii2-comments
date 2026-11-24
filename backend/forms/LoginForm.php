@@ -11,7 +11,6 @@ use common\security\RateLimiterUnavailableException;
 use Override;
 use Yii;
 use yii\base\Model;
-use yii\web\Session;
 use yii\web\User as WebUser;
 
 /**
@@ -32,16 +31,12 @@ final class LoginForm extends Model
     /** Ключ лимита: логин в нижнем регистре и IP. */
     private const string LIMIT_KEY = 'login:%s:%s';
 
-    /** Ключ сессии с auth_key админа на момент входа. */
-    public const string SESSION_AUTH_KEY = 'auth_key';
-
     public string $username = '';
 
     public string $password = '';
 
     public function __construct(
         private readonly WebUser $webUser,
-        private readonly Session $session,
         private readonly UserRepositoryInterface $users,
         private readonly RateLimiterInterface $limiter,
     ) {
@@ -101,8 +96,8 @@ final class LoginForm extends Model
         }
 
         $this->limiter->reset($key);
+        // login() сам кладёт в сессию auth_key админа: после смены пароля сессия перестаёт проходить проверку.
         $this->webUser->login($admin);
-        $this->session->set(self::SESSION_AUTH_KEY, $admin->getAuthKey());
 
         return LoginResult::Success;
     }

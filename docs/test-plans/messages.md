@@ -63,7 +63,7 @@
 
 ## Консоль
 
-Команда `admin/create` (UNIT-CLI-01, CLI-02). Ошибки валидации печатаются в stderr по одной на строку.
+Команды `admin/create`, `admin/block`, `admin/unblock`, `admin/password` (UNIT-CLI-01…03). Ошибки печатаются в stderr по одной на строку.
 
 | Ключ | Текст | Где |
 |---|---|---|
@@ -71,6 +71,11 @@
 | `cli.admin.username_invalid` | Логин: от 3 до 64 символов, только латиница, цифры, «_», «.» и «-». | stderr |
 | `cli.admin.username_taken` | Логин {username} уже занят. | stderr |
 | `cli.admin.password_too_short` | Пароль: не короче {min} символов. | stderr |
+| `cli.admin.blocked` | Админ {username} заблокирован. | stdout после блокировки |
+| `cli.admin.unblocked` | Админ {username} разблокирован. | stdout после разблокировки |
+| `cli.admin.password_changed` | Пароль админа {username} изменён. | stdout после смены пароля |
+| `cli.admin.not_found` | Админа {username} нет. | stderr, код 2 |
+| `cli.admin.ws_not_notified` | Изменение для админа {username} сохранено, но WS-сервер о нём не узнал: Redis недоступен. Открытые WS-соединения админа закроются при следующей проверке доступа, в течение минуты. | stderr, код 3: `admin/block` или `admin/password` сохранены, публикация `access.revoked` упала |
 
 ## Интерфейс
 

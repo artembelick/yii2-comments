@@ -50,6 +50,36 @@ final class ActiveRecordUserRepositoryTest extends Unit
         self::assertSame([$active->id, null], $found);
     }
 
+    #[TestDox('UNIT-UREPO-04: setStatus меняет статус, auth_key и updated_at, хэш пароля не трогает')]
+    public function testSetStatusChangesStatusAuthKeyAndUpdatedAt(): void
+    {
+        $anna = $this->tester->haveAdmin();
+        $repository = new ActiveRecordUserRepository();
+
+        $repository->setStatus($anna->id, User::STATUS_BLOCKED, 'new-auth-key', new DateTimeImmutable('2026-11-24 10:00:00+00:00'));
+
+        $stored = $repository->findByUsername($anna->username);
+        self::assertSame(
+            [User::STATUS_BLOCKED, 'new-auth-key', '2026-11-24 10:00:00+00', $anna->password_hash],
+            [$stored?->status, $stored?->auth_key, $stored?->updated_at, $stored?->password_hash],
+        );
+    }
+
+    #[TestDox('UNIT-UREPO-04: setPassword меняет хэш пароля, auth_key и updated_at, статус не трогает')]
+    public function testSetPasswordChangesHashAuthKeyAndUpdatedAt(): void
+    {
+        $anna = $this->tester->haveAdmin();
+        $repository = new ActiveRecordUserRepository();
+
+        $repository->setPassword($anna->id, 'new-password-hash', 'new-auth-key', new DateTimeImmutable('2026-11-24 10:00:00+00:00'));
+
+        $stored = $repository->findByUsername($anna->username);
+        self::assertSame(
+            ['new-password-hash', 'new-auth-key', '2026-11-24 10:00:00+00', User::STATUS_ACTIVE],
+            [$stored?->password_hash, $stored?->auth_key, $stored?->updated_at, $stored?->status],
+        );
+    }
+
     #[TestDox('UNIT-UREPO-05: create сохраняет активного админа с логином, хэшем, auth_key и временем')]
     public function testCreateStoresActiveAdmin(): void
     {

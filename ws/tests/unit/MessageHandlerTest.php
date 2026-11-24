@@ -12,10 +12,12 @@ use common\redis\RedisUnavailableException;
 use common\repositories\UserRepositoryInterface;
 use common\security\WsTokenService;
 use PHPUnit\Framework\Attributes\TestDox;
+use PHPUnit\Framework\MockObject\Stub;
 use ws\ActiveAdminChecker;
 use ws\ConnectionRegistry;
 use ws\MessageHandler;
 use ws\OriginPolicy;
+use ws\tests\_support\AnsweringUsers;
 use ws\tests\_support\FakeConnection;
 use ws\tests\_support\FakeTimer;
 use yii\db\Connection;
@@ -28,6 +30,8 @@ final class MessageHandlerTest extends Unit
     private const int ADMIN_ID = 7;
 
     private const string SESSION_ID = 'session-of-anna';
+
+    private const string AUTH_KEY = 'auth-key-of-anna';
 
     /** Токен верного формата: 43 символа base64url. */
     private const string TOKEN = 'Abcdefghijklmnopqrstuvwxyz0123456789-_ABCDE';
@@ -106,6 +110,35 @@ final class MessageHandlerTest extends Unit
         $registry = new ConnectionRegistry();
         $connection = new FakeConnection('1');
         $handler = $this->handler($registry, new FakeTimer(), users: $this->usersWith(null));
+        $handler->onConnect($connection, self::ADMIN_ORIGIN);
+
+        $handler->onMessage($connection, $this->auth(self::TOKEN));
+
+        self::assertSame([4401, [], []], [$connection->closedWith, $connection->sent, $registry->authenticated()]);
+    }
+
+    #[TestDox('UNIT-MH-04: после выдачи токена админу сменили пароль (auth_key другой) → close(4401)')]
+    public function testTokenIssuedBeforePasswordChangeIsUnauthorized(): void
+    {
+        $registry = new ConnectionRegistry();
+        $connection = new FakeConnection('1');
+        $passwordChanged = new User(['id' => self::ADMIN_ID, 'status' => User::STATUS_ACTIVE, 'auth_key' => 'auth-key-after-password-change']);
+        $handler = $this->handler($registry, new FakeTimer(), users: $this->usersWith($passwordChanged));
+        $handler->onConnect($connection, self::ADMIN_ORIGIN);
+
+        $handler->onMessage($connection, $this->auth(self::TOKEN));
+
+        self::assertSame([4401, [], []], [$connection->closedWith, $connection->sent, $registry->authenticated()]);
+    }
+
+    #[TestDox('UNIT-MH-04: сессия токена завершена (logout после выдачи) → close(4401)')]
+    public function testTokenOfEndedSessionIsUnauthorized(): void
+    {
+        $registry = new ConnectionRegistry();
+        $connection = new FakeConnection('1');
+        $redis = $this->redisWith($this->claims());
+        $redis->method('get')->willReturnMap([['ws-session-ended:' . self::SESSION_ID, '1']]);
+        $handler = $this->handler($registry, new FakeTimer(), $redis);
         $handler->onConnect($connection, self::ADMIN_ORIGIN);
 
         $handler->onMessage($connection, $this->auth(self::TOKEN));
@@ -206,6 +239,45 @@ final class MessageHandlerTest extends Unit
         self::assertSame([null, [['type' => 'auth.ok'], ['type' => 'pong']]], [$connection->closedWith, $connection->sent]);
     }
 
+    #[TestDox('UNIT-MH-11: ping после авторизации перепроверяет доступ: админ заблокирован или сменил пароль → close(4403), pong не уходит')]
+    #[DataProvider('endedAccess')]
+    public function testPingClosesConnectionWhoseAccessEnded(?User $adminAfterAuth): void
+    {
+        $connection = new FakeConnection('1');
+        $handler = $this->handler(new ConnectionRegistry(), new FakeTimer(), users: new AnsweringUsers($this->activeAdmin(), $adminAfterAuth));
+        $handler->onConnect($connection, self::ADMIN_ORIGIN);
+        $handler->onMessage($connection, $this->auth(self::TOKEN));
+
+        $handler->onMessage($connection, '{"type":"ping"}');
+
+        self::assertSame([4403, [['type' => 'auth.ok']]], [$connection->closedWith, $connection->sent]);
+    }
+
+    /**
+     * @return array<string, array{?User}>
+     */
+    public static function endedAccess(): array
+    {
+        return [
+            'заблокирован' => [null],
+            'сменил пароль (auth_key другой)' => [new User(['id' => self::ADMIN_ID, 'status' => User::STATUS_ACTIVE, 'auth_key' => 'auth-key-after-password-change'])],
+        ];
+    }
+
+    #[TestDox('UNIT-MH-11: ping, а перепроверить доступ не удалось (БД недоступна и после переподключения) → close(1011)')]
+    public function testPingWithUnavailableCheckIsInternalError(): void
+    {
+        $connection = new FakeConnection('1');
+        $dbDown = new Exception('server closed the connection unexpectedly');
+        $handler = $this->handler(new ConnectionRegistry(), new FakeTimer(), users: new AnsweringUsers($this->activeAdmin(), $dbDown, $dbDown));
+        $handler->onConnect($connection, self::ADMIN_ORIGIN);
+        $handler->onMessage($connection, $this->auth(self::TOKEN));
+
+        $handler->onMessage($connection, '{"type":"ping"}');
+
+        self::assertSame([1011, [['type' => 'auth.ok']]], [$connection->closedWith, $connection->sent]);
+    }
+
     #[TestDox('UNIT-MH-08: каждое входящее сообщение отменяет таймер тишины и ставит новый на 60 секунд')]
     public function testMessageRestartsSilenceTimer(): void
     {
@@ -277,7 +349,11 @@ final class MessageHandlerTest extends Unit
         );
     }
 
-    /** Redis отдаёт на GETDEL это значение. */
+    /**
+     * Redis отдаёт на GETDEL это значение.
+     *
+     * @return RedisClientInterface&Stub
+     */
     private function redisWith(?string $stored): RedisClientInterface
     {
         $redis = self::createStub(RedisClientInterface::class);
@@ -296,12 +372,12 @@ final class MessageHandlerTest extends Unit
 
     private function claims(): string
     {
-        return json_encode(['userId' => self::ADMIN_ID, 'sessionId' => self::SESSION_ID], JSON_THROW_ON_ERROR);
+        return json_encode(['userId' => self::ADMIN_ID, 'sessionId' => self::SESSION_ID, 'authKey' => self::AUTH_KEY], JSON_THROW_ON_ERROR);
     }
 
     private function activeAdmin(): User
     {
-        return new User(['id' => self::ADMIN_ID, 'status' => User::STATUS_ACTIVE]);
+        return new User(['id' => self::ADMIN_ID, 'status' => User::STATUS_ACTIVE, 'auth_key' => self::AUTH_KEY]);
     }
 
     private function auth(string $token): string

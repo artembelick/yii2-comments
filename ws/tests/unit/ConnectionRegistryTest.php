@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ws\tests\unit;
 
 use Codeception\Test\Unit;
+use common\security\WsTokenClaims;
 use PHPUnit\Framework\Attributes\TestDox;
 use ws\ConnectionRegistry;
 use ws\tests\_support\FakeConnection;
@@ -15,7 +16,9 @@ final class ConnectionRegistryTest extends Unit
 
     private const int BORIS = 8;
 
-    #[TestDox('UNIT-REG-01: добавленное соединение не авторизовано и не попадает в authenticated()')]
+    private const string AUTH_KEY = 'auth-key-at-token-issue';
+
+    #[TestDox('UNIT-REG-01: добавленное соединение не авторизовано, claimsOf пуст, в authenticated() его нет')]
     public function testAddedConnectionIsNotAuthenticated(): void
     {
         $registry = new ConnectionRegistry();
@@ -23,19 +26,20 @@ final class ConnectionRegistryTest extends Unit
 
         $registry->add($connection);
 
-        self::assertSame([false, []], [$registry->isAuthenticated($connection), $registry->authenticated()]);
+        self::assertSame([false, null, []], [$registry->isAuthenticated($connection), $registry->claimsOf($connection), $registry->authenticated()]);
     }
 
-    #[TestDox('UNIT-REG-02: после authenticate соединение находится через authenticated, bySession и byUser')]
+    #[TestDox('UNIT-REG-02: после authenticate соединение находится через authenticated, bySession и byUser, claimsOf отдаёт его токен')]
     public function testAuthenticatedConnectionIsFound(): void
     {
         $registry = new ConnectionRegistry();
         $connection = new FakeConnection('1');
         $registry->add($connection);
+        $claims = new WsTokenClaims(self::ANNA, 'session-1', self::AUTH_KEY);
 
-        $registry->authenticate($connection, self::ANNA, 'session-1');
+        $registry->authenticate($connection, $claims);
 
-        self::assertTrue($registry->isAuthenticated($connection));
+        self::assertSame([true, $claims], [$registry->isAuthenticated($connection), $registry->claimsOf($connection)]);
         self::assertSame(
             [[$connection], [$connection], [$connection]],
             [$registry->authenticated(), $registry->bySession('session-1'), $registry->byUser(self::ANNA)],
@@ -48,7 +52,7 @@ final class ConnectionRegistryTest extends Unit
         $registry = new ConnectionRegistry();
         $connection = new FakeConnection('1');
         $registry->add($connection);
-        $registry->authenticate($connection, self::ANNA, 'session-1');
+        $registry->authenticate($connection, new WsTokenClaims(self::ANNA, 'session-1', self::AUTH_KEY));
 
         $registry->remove($connection);
 
@@ -87,10 +91,10 @@ final class ConnectionRegistryTest extends Unit
         $registry->add($boris);
         $registry->add($unauthenticated);
 
-        $registry->authenticate($annaTab1, self::ANNA, 'session-1');
-        $registry->authenticate($annaTab2, self::ANNA, 'session-1');
-        $registry->authenticate($annaOtherSession, self::ANNA, 'session-2');
-        $registry->authenticate($boris, self::BORIS, 'session-3');
+        $registry->authenticate($annaTab1, new WsTokenClaims(self::ANNA, 'session-1', self::AUTH_KEY));
+        $registry->authenticate($annaTab2, new WsTokenClaims(self::ANNA, 'session-1', self::AUTH_KEY));
+        $registry->authenticate($annaOtherSession, new WsTokenClaims(self::ANNA, 'session-2', self::AUTH_KEY));
+        $registry->authenticate($boris, new WsTokenClaims(self::BORIS, 'session-3', self::AUTH_KEY));
 
         self::assertSame(
             [[$annaTab1, $annaTab2], [$annaTab1, $annaTab2, $annaOtherSession], [$annaTab1, $annaTab2, $annaOtherSession, $boris]],

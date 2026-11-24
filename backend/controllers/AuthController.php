@@ -7,8 +7,10 @@ namespace backend\controllers;
 use backend\components\AdminAccessControl;
 use backend\forms\LoginForm;
 use backend\forms\LoginResult;
+use common\security\SessionTerminator;
 use Override;
 use Yii;
+use yii\base\Module;
 use yii\filters\VerbFilter;
 use yii\helpers\Url;
 use yii\web\Controller;
@@ -26,6 +28,18 @@ final class AuthController extends Controller
 
     /** Путь от корня: после первого слэша нет второго слэша или обратного, во всём пути нет управляющих символов и пробелов. */
     private const string SAFE_PATH = '~^/(?![/\\\\])[^\x00-\x20\x7f]*$~D';
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    public function __construct(
+        string $id,
+        Module $module,
+        private readonly SessionTerminator $terminator,
+        array $config = [],
+    ) {
+        parent::__construct($id, $module, $config);
+    }
 
     #[Override]
     public function behaviors(): array
@@ -51,7 +65,7 @@ final class AuthController extends Controller
             return $this->redirect(['comment/index']);
         }
 
-        $form = Yii::createObject(LoginForm::class, [Yii::$app->user, Yii::$app->session]);
+        $form = Yii::createObject(LoginForm::class, [Yii::$app->user]);
         if (!$this->request->getIsPost()) {
             return $this->render('login', ['model' => $form]);
         }
@@ -68,8 +82,10 @@ final class AuthController extends Controller
         return $this->render('login', ['model' => $form]);
     }
 
+    /** WS закрывает соединения только этой сессии; id сессии читается до logout, который её уничтожает. */
     public function actionLogout(): Response
     {
+        $this->terminator->sessionEnded(Yii::$app->session->getId());
         Yii::$app->user->logout();
 
         return $this->redirect(['auth/login']);

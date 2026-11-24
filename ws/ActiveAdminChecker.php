@@ -4,14 +4,13 @@ declare(strict_types=1);
 
 namespace ws;
 
-use common\models\User;
 use common\repositories\UserRepositoryInterface;
 use yii\db\Connection;
 use yii\db\Exception;
 
 /**
- * Активен ли админ — проверка после погашения токена (ADR 0002): токен, выданный до блокировки,
- * не должен открыть соединение. ws-процесс живёт долго, и соединение с Postgres может оборваться:
+ * Действует ли ещё доступ админа — проверка после погашения токена и на каждом ping (ADR 0002): токен, выданный
+ * до блокировки или до смены пароля (auth_key другой), не должен открыть соединение, а открытое не должно жить после них. ws-процесс живёт долго, и соединение с Postgres может оборваться:
  * тогда оно закрывается, Yii открывает его заново на следующем запросе, и проверка повторяется один раз.
  */
 final readonly class ActiveAdminChecker
@@ -22,20 +21,30 @@ final readonly class ActiveAdminChecker
     ) {}
 
     /**
+     * Админ активен и его auth_key тот же, что при выдаче токена.
+     *
      * @throws AdminCheckUnavailableException БД недоступна и после переподключения
      */
-    public function isActive(int $userId): bool
+    public function hasValidAccess(int $userId, string $authKey): bool
     {
         try {
-            return $this->users->findActiveById($userId) instanceof User;
+            return $this->check($userId, $authKey);
         } catch (Exception) {
             $this->db->close();
         }
 
         try {
-            return $this->users->findActiveById($userId) instanceof User;
+            return $this->check($userId, $authKey);
         } catch (Exception $exception) {
             throw new AdminCheckUnavailableException('БД не ответила на проверку админа', 0, $exception);
         }
+    }
+
+    /**
+     * @throws Exception
+     */
+    private function check(int $userId, string $authKey): bool
+    {
+        return $this->users->findActiveById($userId)?->validateAuthKey($authKey) === true;
     }
 }

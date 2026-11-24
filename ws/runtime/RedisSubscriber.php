@@ -27,7 +27,7 @@ final class RedisSubscriber
         // AUTH встаёт в очередь раньше SUBSCRIBE. Без пароля список пуст и команды нет.
         array_map(static fn(string|array $auth): mixed => $client->auth($auth), array_filter([$settings->auth]));
         $client->subscribe(
-            [EventPublisherInterface::COMMENTS],
+            [EventPublisherInterface::COMMENTS, EventPublisherInterface::CONTROL],
             static fn(string $channel, string $payload) => $dispatcher->dispatch($channel, $payload),
         );
         self::$client = $client;

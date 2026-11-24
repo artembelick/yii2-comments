@@ -19,10 +19,14 @@ final class WsTokenServiceTest extends Unit
 
     private const string SESSION_ID = 'session-of-anna';
 
+    private const string AUTH_KEY = 'auth-key-of-anna';
+
+    private const string CLAIMS = '{"userId":7,"sessionId":"session-of-anna","authKey":"auth-key-of-anna"}';
+
     /** Токен верного формата: 43 символа base64url. */
     private const string TOKEN = 'Abcdefghijklmnopqrstuvwxyz0123456789-_ABCDE';
 
-    #[TestDox('UNIT-TOK-01: issue выдаёт 43 символа base64url и пишет под ws-token:<токен> JSON с userId и sessionId через SET NX EX 60')]
+    #[TestDox('UNIT-TOK-01: issue выдаёт 43 символа base64url и пишет под ws-token:<токен> JSON с userId, sessionId и authKey через SET NX EX 60')]
     public function testIssueStoresClaimsUnderToken(): void
     {
         $stored = [];
@@ -33,10 +37,10 @@ final class WsTokenServiceTest extends Unit
             },
         );
 
-        $token = (new WsTokenService($redis))->issue(self::ADMIN_ID, self::SESSION_ID);
+        $token = (new WsTokenService($redis))->issue(self::ADMIN_ID, self::SESSION_ID, self::AUTH_KEY);
 
         self::assertMatchesRegularExpression('~^[A-Za-z0-9_-]{43}$~D', $token);
-        self::assertSame(['ws-token:' . $token, '{"userId":7,"sessionId":"session-of-anna"}', 60], $stored);
+        self::assertSame(['ws-token:' . $token, self::CLAIMS, 60], $stored);
     }
 
     #[TestDox('UNIT-TOK-02: два issue подряд дают разные токены')]
@@ -44,8 +48,8 @@ final class WsTokenServiceTest extends Unit
     {
         $tokens = new WsTokenService(self::createStub(RedisClientInterface::class));
 
-        $first = $tokens->issue(self::ADMIN_ID, self::SESSION_ID);
-        $second = $tokens->issue(self::ADMIN_ID, self::SESSION_ID);
+        $first = $tokens->issue(self::ADMIN_ID, self::SESSION_ID, self::AUTH_KEY);
+        $second = $tokens->issue(self::ADMIN_ID, self::SESSION_ID, self::AUTH_KEY);
 
         self::assertNotSame($first, $second);
     }
@@ -55,11 +59,11 @@ final class WsTokenServiceTest extends Unit
     {
         $redis = $this->createMock(RedisClientInterface::class);
         $redis->expects(self::once())->method('getDel')->with('ws-token:' . self::TOKEN)
-            ->willReturn('{"userId":7,"sessionId":"session-of-anna"}');
+            ->willReturn(self::CLAIMS);
 
         $claims = (new WsTokenService($redis))->consume(self::TOKEN);
 
-        self::assertSame([self::ADMIN_ID, self::SESSION_ID], [$claims?->userId, $claims?->sessionId]);
+        self::assertSame([self::ADMIN_ID, self::SESSION_ID, self::AUTH_KEY], [$claims?->userId, $claims?->sessionId, $claims?->authKey]);
     }
 
     #[TestDox('UNIT-TOK-03: GETDEL ничего не вернул (токен уже погашен) → null')]
@@ -123,8 +127,9 @@ final class WsTokenServiceTest extends Unit
         return [
             'не JSON' => ['{"userId":7,'],
             'JSON не объект' => ['"session-of-anna"'],
-            'нет sessionId' => ['{"userId":7}'],
-            'userId строкой' => ['{"userId":"7","sessionId":"session-of-anna"}'],
+            'нет sessionId' => ['{"userId":7,"authKey":"auth-key-of-anna"}'],
+            'userId строкой' => ['{"userId":"7","sessionId":"session-of-anna","authKey":"auth-key-of-anna"}'],
+            'нет authKey' => ['{"userId":7,"sessionId":"session-of-anna"}'],
         ];
     }
 
@@ -133,6 +138,27 @@ final class WsTokenServiceTest extends Unit
     {
         $redis = self::createStub(RedisClientInterface::class);
         $redis->method('getDel')->willReturn(null);
+
+        $claims = (new WsTokenService($redis))->consume(self::TOKEN);
+
+        self::assertNull($claims);
+    }
+
+    #[TestDox('UNIT-TOK-07: endSession пишет метку ws-session-ended:<сессия> через SET NX EX 120 — вдвое дольше жизни её токенов')]
+    public function testEndSessionMarksSessionForTokenLifetime(): void
+    {
+        $redis = $this->createMock(RedisClientInterface::class);
+        $redis->expects(self::once())->method('setNxEx')->with('ws-session-ended:' . self::SESSION_ID, '1', 120);
+
+        (new WsTokenService($redis))->endSession(self::SESSION_ID);
+    }
+
+    #[TestDox('UNIT-TOK-08: токен сессии с меткой «завершена» → consume гасит его и возвращает null')]
+    public function testTokenOfEndedSessionGivesNull(): void
+    {
+        $redis = $this->createMock(RedisClientInterface::class);
+        $redis->expects(self::once())->method('getDel')->with('ws-token:' . self::TOKEN)->willReturn(self::CLAIMS);
+        $redis->expects(self::atLeast(1))->method('get')->willReturnMap([['ws-session-ended:' . self::SESSION_ID, '1']]);
 
         $claims = (new WsTokenService($redis))->consume(self::TOKEN);
 

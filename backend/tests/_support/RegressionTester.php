@@ -120,6 +120,29 @@ final class RegressionTester extends Actor
         }
     }
 
+    /**
+     * Настоящая консольная команда `./yii <command> <username>` в контейнере стенда, $stdin — её STDIN
+     * (пароль первой строкой). Команда должна завершиться с кодом 0, иначе тест падает с её выводом.
+     */
+    public function runAdminCommand(string $command, string $username, string $stdin = ''): void
+    {
+        // stderr в тот же поток, что stdout (2>&1): два канала, прочитанные по очереди, могут заблокировать друг друга.
+        $process = proc_open(
+            sprintf('php %s %s %s 2>&1', escapeshellarg(dirname(__DIR__, 3) . '/yii'), escapeshellarg($command), escapeshellarg($username)),
+            [0 => ['pipe', 'r'], 1 => ['pipe', 'w']],
+            $pipes,
+        );
+        if (!is_resource($process)) {
+            throw new RuntimeException(sprintf('Команда %s не запустилась', $command));
+        }
+
+        fwrite($pipes[0], $stdin);
+        fclose($pipes[0]);
+        $output = stream_get_contents($pipes[1]);
+        $exitCode = proc_close($process);
+        $this->assertSame(0, $exitCode, sprintf('Команда %s %s: %s', $command, $username, $output));
+    }
+
     /** CSRF-токен из meta-тега текущей страницы. */
     public function grabCsrfToken(): string
     {

@@ -14,7 +14,10 @@ use yii\filters\VerbFilter;
 use yii\web\Controller;
 use yii\web\Response;
 
-/** Одноразовый токен для подключения админки к WS-серверу (ADR 0002). */
+/**
+ * Одноразовый токен для подключения админки к WS-серверу (ADR 0002). В токене id админа, id сессии и auth_key
+ * админа: WS-сервер не пустит по нему после logout этой сессии или после смены пароля.
+ */
 final class WsTokenController extends Controller
 {
     /**
@@ -41,7 +44,8 @@ final class WsTokenController extends Controller
     public function actionCreate(): Response
     {
         try {
-            $token = $this->tokens->issue((int) Yii::$app->user->getId(), Yii::$app->session->getId());
+            $admin = Yii::$app->user->getIdentity();
+            $token = $this->tokens->issue((int) $admin?->getId(), Yii::$app->session->getId(), (string) $admin?->getAuthKey());
         } catch (RedisUnavailableException) {
             $this->response->setStatusCode(503);
 

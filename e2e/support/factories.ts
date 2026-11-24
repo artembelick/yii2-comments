@@ -132,3 +132,16 @@ export async function comments(db: Pool, faker: Faker, count: number): Promise<C
 
   return [...older, await comment(db, faker)];
 }
+
+/** Статус админа в БД. `admin/block` и `admin/unblock` вместе со статусом меняют и auth_key (`accounts.ts`). */
+export async function setAdminStatus(db: Pool, id: number, status: number): Promise<void> {
+  await db.query(`UPDATE "user" SET status = $1, updated_at = now() WHERE id = $2`, [status, id]);
+}
+
+/** Новый auth_key админа в БД: так `admin/password` и `admin/block` гасят его прежние сессии. */
+export async function rotateAdminAuthKey(db: Pool, faker: Faker, id: number): Promise<void> {
+  await db.query(`UPDATE "user" SET auth_key = $1, updated_at = now() WHERE id = $2`, [
+    faker.string.alphanumeric(AUTH_KEY_LENGTH),
+    id,
+  ]);
+}

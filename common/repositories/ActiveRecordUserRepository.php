@@ -38,4 +38,22 @@ final class ActiveRecordUserRepository implements UserRepositoryInterface
 
         return $user;
     }
+
+    #[Override]
+    public function setStatus(int $id, int $status, string $authKey, DateTimeImmutable $now): void
+    {
+        User::updateAll(
+            ['status' => $status, 'auth_key' => $authKey, 'updated_at' => $now->format(DateTimeInterface::ATOM)],
+            ['id' => $id],
+        );
+    }
+
+    #[Override]
+    public function setPassword(int $id, string $passwordHash, string $authKey, DateTimeImmutable $now): void
+    {
+        User::updateAll(
+            ['password_hash' => $passwordHash, 'auth_key' => $authKey, 'updated_at' => $now->format(DateTimeInterface::ATOM)],
+            ['id' => $id],
+        );
+    }
 }

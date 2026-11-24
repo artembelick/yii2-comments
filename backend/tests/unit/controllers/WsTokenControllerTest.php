@@ -17,7 +17,7 @@ final class WsTokenControllerTest extends Unit
 {
     private const int ADMIN_ID = 7;
 
-    #[TestDox('UNIT-WTC-01: create выдаёт токен на id админа и id сессии и отвечает JSON с полем token')]
+    #[TestDox('UNIT-WTC-01: create выдаёт токен на id админа, id сессии и его auth_key и отвечает JSON с полем token')]
     public function testCreateIssuesTokenForAdminSession(): void
     {
         $stored = [];
@@ -26,7 +26,7 @@ final class WsTokenControllerTest extends Unit
             $stored = [$key, $claims];
         });
         Yii::$container->set(RedisClientInterface::class, $redis);
-        Yii::$app->user->setIdentity(new User(['id' => self::ADMIN_ID]));
+        Yii::$app->user->setIdentity(new User(['id' => self::ADMIN_ID, 'auth_key' => 'auth-key-of-anna']));
         Yii::$app->session->open();
         Yii::$app->request->headers->set('X-Http-Method-Override', 'POST');
 
@@ -35,7 +35,7 @@ final class WsTokenControllerTest extends Unit
         self::assertInstanceOf(Response::class, $response);
         self::assertSame(200, $response->statusCode);
         self::assertSame(
-            ['ws-token:' . $this->tokenOf($response), json_encode(['userId' => self::ADMIN_ID, 'sessionId' => Yii::$app->session->getId()])],
+            ['ws-token:' . $this->tokenOf($response), json_encode(['userId' => self::ADMIN_ID, 'sessionId' => Yii::$app->session->getId(), 'authKey' => 'auth-key-of-anna'])],
             $stored,
         );
     }
@@ -46,7 +46,7 @@ final class WsTokenControllerTest extends Unit
         $redis = self::createStub(RedisClientInterface::class);
         $redis->method('setNxEx')->willThrowException(new RedisUnavailableException('connection refused'));
         Yii::$container->set(RedisClientInterface::class, $redis);
-        Yii::$app->user->setIdentity(new User(['id' => self::ADMIN_ID]));
+        Yii::$app->user->setIdentity(new User(['id' => self::ADMIN_ID, 'auth_key' => 'auth-key-of-anna']));
         Yii::$app->request->headers->set('X-Http-Method-Override', 'POST');
 
         $response = Yii::$app->runAction('ws-token/create');
@@ -61,7 +61,7 @@ final class WsTokenControllerTest extends Unit
         $redis = $this->createMock(RedisClientInterface::class);
         $redis->expects(self::never())->method('setNxEx');
         Yii::$container->set(RedisClientInterface::class, $redis);
-        Yii::$app->user->setIdentity(new User(['id' => self::ADMIN_ID]));
+        Yii::$app->user->setIdentity(new User(['id' => self::ADMIN_ID, 'auth_key' => 'auth-key-of-anna']));
 
         $this->expectException(MethodNotAllowedHttpException::class);
 

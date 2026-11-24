@@ -20,6 +20,8 @@ final class LoginCest
 
     private const string LOGIN_URL = 'http://admin.comments.localhost/login';
 
+    private const string NEW_PASSWORD = 'new-password-for-a09c';
+
     /** REG-A-01: GET /login → 200 и форма входа */
     public function loginPageShowsForm(RegressionTester $I): void
     {
@@ -179,6 +181,47 @@ final class LoginCest
 
         $I->seeResponseCodeIs(422);
         $I->see(Yii::t('app', 'login.invalid'));
+    }
+
+    /** REG-A-09b: вошедшего А блокируют консольной командой → следующий запрос А уходит на логин */
+    public function blockedAdminLosesSession(RegressionTester $I): void
+    {
+        $admin = $I->haveAdmin();
+        $I->amSignedInAs($admin);
+        $I->runAdminCommand('admin/block', $admin->username);
+        $I->stopFollowingRedirects();
+
+        $I->amOnPage('/');
+
+        $I->seeResponseCodeIs(302);
+        $I->seeHttpHeader('Location', self::LOGIN_URL);
+    }
+
+    /** REG-A-09c: А вошёл, admin/password меняет ему пароль → старая сессия уходит на логин */
+    public function passwordChangeEndsOldSession(RegressionTester $I): void
+    {
+        $admin = $I->haveAdmin();
+        $I->amSignedInAs($admin);
+        $I->runAdminCommand('admin/password', $admin->username, self::NEW_PASSWORD . "\n");
+        $I->stopFollowingRedirects();
+
+        $I->amOnPage('/');
+
+        $I->seeResponseCodeIs(302);
+        $I->seeHttpHeader('Location', self::LOGIN_URL);
+    }
+
+    /** REG-A-09c: после admin/password вход с новым паролем работает */
+    public function newPasswordSignsIn(RegressionTester $I): void
+    {
+        $admin = $I->haveAdmin();
+        $I->runAdminCommand('admin/password', $admin->username, self::NEW_PASSWORD . "\n");
+        $I->stopFollowingRedirects();
+
+        $I->submitLogin($admin->username, self::NEW_PASSWORD);
+
+        $I->seeResponseCodeIs(302);
+        $I->seeHttpHeader('Location', self::LIST_URL);
     }
 
     /** REG-A-10: вошедший админ открывает /login → редирект на список */

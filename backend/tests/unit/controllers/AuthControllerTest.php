@@ -6,7 +6,9 @@ namespace backend\tests\unit\controllers;
 
 use Codeception\Attribute\DataProvider;
 use Codeception\Test\Unit;
+use common\events\EventPublisherInterface;
 use common\models\User;
+use common\redis\RedisClientInterface;
 use common\repositories\UserRepositoryInterface;
 use common\security\RateLimiterInterface;
 use common\security\RateLimiterUnavailableException;
@@ -144,16 +146,30 @@ final class AuthControllerTest extends Unit
         self::assertSame([302, self::HOST . '/login'], [Yii::$app->response->statusCode, Yii::$app->response->headers->get('Location')]);
     }
 
-    #[TestDox('UNIT-AUTH-05: logout через POST от вошедшего → выход и редирект на логин')]
-    public function testLogoutSignsOut(): void
+    #[TestDox('UNIT-AUTH-04: logout сообщает WS о завершении текущей сессии до выхода, затем выход и редирект на логин')]
+    public function testLogoutEndsSessionBeforeSigningOut(): void
     {
+        $published = [];
+        $events = self::createStub(EventPublisherInterface::class);
+        $events->method('publish')->willReturnCallback(static function (string $channel, array $message) use (&$published): void {
+            $published[] = [$channel, $message, Yii::$app->user->getIsGuest()];
+        });
+        Yii::$container->set(EventPublisherInterface::class, $events);
+        Yii::$container->set(RedisClientInterface::class, self::createStub(RedisClientInterface::class));
+
         Yii::$app->user->setIdentity($this->admin());
+        Yii::$app->session->open();
+
+        $sessionId = Yii::$app->session->getId();
         $this->post([]);
 
         $response = Yii::$app->runAction('auth/logout');
 
         self::assertInstanceOf(Response::class, $response);
-        self::assertSame([302, self::HOST . '/login', true], [$response->statusCode, $response->headers->get('Location'), Yii::$app->user->getIsGuest()]);
+        self::assertSame(
+            [[['ws.control', ['type' => 'session.ended', 'sessionId' => $sessionId], false]], true, 302, self::HOST . '/login'],
+            [$published, Yii::$app->user->getIsGuest(), $response->statusCode, $response->headers->get('Location')],
+        );
     }
 
     private function signInWith(RateLimiterInterface $limiter): void

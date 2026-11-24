@@ -74,6 +74,19 @@ export class WsProbe {
     return [next, ...(await this.#messagesBeforePong())];
   }
 
+  /**
+   * Живо ли соединение: на ping приходит pong. Для проверки «соединение не тронуто» в Assert:
+   * закрытое соединение ответа не пришлёт, и результат — false.
+   */
+  public async isAlive(): Promise<boolean> {
+    this.send({ type: "ping" });
+    try {
+      return JSON.stringify(await this.nextMessage()) === JSON.stringify({ type: "pong" });
+    } catch {
+      return false;
+    }
+  }
+
   /** Все сообщения, которые сервер прислал до закрытия соединения, в порядке прихода. Ждёт закрытия. */
   public async messagesUntilClose(): Promise<unknown[]> {
     const messages: unknown[] = [];

@@ -6,6 +6,7 @@ namespace ws\tests\unit;
 
 use Codeception\Attribute\DataProvider;
 use Codeception\Test\Unit;
+use common\security\WsTokenClaims;
 use common\tests\_support\RecordingLogger;
 use Override;
 use PHPUnit\Framework\Attributes\TestDox;
@@ -44,6 +45,39 @@ final class RedisDispatcherTest extends Unit
         self::assertSame([[self::CREATED], [self::CREATED], []], [$anna->sent, $boris->sent, $stranger->sent]);
     }
 
+    #[TestDox('UNIT-DSP-02: ws.control session.ended → close(4403) всем соединениям этой сессии, остальные не тронуты')]
+    public function testSessionEndedClosesOnlyThatSession(): void
+    {
+        $registry = new ConnectionRegistry();
+        $firstTab = $this->authenticatedIn($registry, '1', 7, 'session-a');
+        $secondTab = $this->authenticatedIn($registry, '2', 7, 'session-a');
+        $otherSession = $this->authenticatedIn($registry, '3', 7, 'session-b');
+        $boris = $this->authenticatedIn($registry, '4', 8, 'session-c');
+
+        (new RedisDispatcher($registry))->dispatch('ws.control', '{"type":"session.ended","sessionId":"session-a"}');
+
+        self::assertSame(
+            [CloseCode::SESSION_ENDED, CloseCode::SESSION_ENDED, null, null],
+            [$firstTab->closedWith, $secondTab->closedWith, $otherSession->closedWith, $boris->closedWith],
+        );
+    }
+
+    #[TestDox('UNIT-DSP-03: ws.control access.revoked → close(4403) всем соединениям админа, чужие не тронуты')]
+    public function testAccessRevokedClosesAllConnectionsOfAdmin(): void
+    {
+        $registry = new ConnectionRegistry();
+        $annaFirst = $this->authenticatedIn($registry, '1', 7, 'session-a');
+        $annaSecond = $this->authenticatedIn($registry, '2', 7, 'session-b');
+        $boris = $this->authenticatedIn($registry, '3', 8, 'session-c');
+
+        (new RedisDispatcher($registry))->dispatch('ws.control', '{"type":"access.revoked","userId":7}');
+
+        self::assertSame(
+            [CloseCode::SESSION_ENDED, CloseCode::SESSION_ENDED, null],
+            [$annaFirst->closedWith, $annaSecond->closedWith, $boris->closedWith],
+        );
+    }
+
     #[TestDox('UNIT-DSP-04: непонятное сообщение → ничего не отправлено, предупреждение в логе')]
     #[DataProvider('unknownMessages')]
     public function testUnknownMessageIsLoggedAndDropped(string $channel, string $payload): void
@@ -55,7 +89,7 @@ final class RedisDispatcherTest extends Unit
 
         (new RedisDispatcher($registry))->dispatch($channel, $payload);
 
-        self::assertSame([], $anna->sent);
+        self::assertSame([[], null], [$anna->sent, $anna->closedWith]);
         self::assertSame([Logger::LEVEL_WARNING], $log->levelsOf(RedisDispatcher::class));
     }
 
@@ -72,6 +106,11 @@ final class RedisDispatcherTest extends Unit
             'неизвестный канал' => ['comments.other', $created],
             'неизвестный type' => ['comments.events', '{"type":"comment.liked","comment":{"id":42}}'],
             'нет type' => ['comments.events', '{"comment":{"id":42}}'],
+            'событие комментария в ws.control' => ['ws.control', $created],
+            'неизвестный type в ws.control' => ['ws.control', '{"type":"session.paused","sessionId":"session-1"}'],
+            'session.ended без sessionId' => ['ws.control', '{"type":"session.ended"}'],
+            'access.revoked с userId не числом' => ['ws.control', '{"type":"access.revoked","userId":"7"}'],
+            'управляющее сообщение в comments.events' => ['comments.events', '{"type":"session.ended","sessionId":"session-1"}'],
         ];
     }
 
@@ -82,7 +121,7 @@ final class RedisDispatcherTest extends Unit
         $anna = $this->authenticated($registry, '1', 7);
         $broken = new FailingConnection('2');
         $registry->add($broken);
-        $registry->authenticate($broken, 8, 'session-2');
+        $registry->authenticate($broken, new WsTokenClaims(8, 'session-2', 'auth-key'));
 
         $boris = $this->authenticated($registry, '3', 9);
 
@@ -96,9 +135,14 @@ final class RedisDispatcherTest extends Unit
 
     private function authenticated(ConnectionRegistry $registry, string $id, int $userId): FakeConnection
     {
+        return $this->authenticatedIn($registry, $id, $userId, 'session-' . $id);
+    }
+
+    private function authenticatedIn(ConnectionRegistry $registry, string $id, int $userId, string $sessionId): FakeConnection
+    {
         $connection = new FakeConnection($id);
         $registry->add($connection);
-        $registry->authenticate($connection, $userId, 'session-' . $id);
+        $registry->authenticate($connection, new WsTokenClaims($userId, $sessionId, 'auth-key'));
 
         return $connection;
     }

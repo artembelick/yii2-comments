@@ -18,7 +18,6 @@ use PHPUnit\Framework\MockObject\MockObject;
 use Yii;
 use yii\base\Security;
 use yii\log\Logger;
-use yii\web\Session;
 use yii\web\User as WebUser;
 
 final class LoginFormTest extends Unit
@@ -35,15 +34,12 @@ final class LoginFormTest extends Unit
 
     private MockObject&WebUser $webUser;
 
-    private MockObject&Session $session;
-
     #[Override]
     protected function _before(): void
     {
         $this->users = $this->createMock(UserRepositoryInterface::class);
         $this->limiter = $this->createMock(RateLimiterInterface::class);
         $this->webUser = $this->createMock(WebUser::class);
-        $this->session = $this->createMock(Session::class);
     }
 
     #[TestDox('UNIT-LOGIN-01: пустые поля → ошибки login.username_required и login.password_required, репозиторий не вызывается')]
@@ -72,7 +68,7 @@ final class LoginFormTest extends Unit
         self::assertSame([LoginResult::TooManyAttempts, [Yii::t('app', 'login.too_many_attempts')]], [$result, $form->getErrors('password')]);
     }
 
-    #[TestDox('UNIT-LOGIN-03: верные данные активного админа → Success, счётчик сброшен, админ вошёл, auth_key в сессии')]
+    #[TestDox('UNIT-LOGIN-03: верные данные активного админа → Success, счётчик сброшен, админ вошёл')]
     public function testValidCredentialsLogIn(): void
     {
         $anna = $this->admin(User::STATUS_ACTIVE);
@@ -80,7 +76,6 @@ final class LoginFormTest extends Unit
         $this->limiter->method('hit')->willReturn(true);
         $this->limiter->expects(self::once())->method('reset')->with('login:anna:' . self::IP);
         $this->webUser->expects(self::once())->method('login')->with($anna)->willReturn(true);
-        $this->session->expects(self::once())->method('set')->with('auth_key', self::AUTH_KEY);
 
         $result = $this->form('anna', self::PASSWORD)->login(self::IP);
 
@@ -162,7 +157,7 @@ final class LoginFormTest extends Unit
 
     private function form(string $username, string $password): LoginForm
     {
-        $form = new LoginForm($this->webUser, $this->session, $this->users, $this->limiter);
+        $form = new LoginForm($this->webUser, $this->users, $this->limiter);
         $form->username = $username;
         $form->password = $password;
 

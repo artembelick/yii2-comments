@@ -197,7 +197,7 @@ public function findActiveById(int $id): ?User
 public function findByUsername(string $username): ?User  // без учёта регистра, любой статус
 public function create(string $username, string $passwordHash, string $authKey, DateTimeImmutable $now): User
 public function setStatus(int $id, int $status, DateTimeImmutable $now): void
-public function setPasswordHash(int $id, string $hash, DateTimeImmutable $now): void
+public function setPassword(int $id, string $passwordHash, string $authKey, DateTimeImmutable $now): void // хэш и auth_key вместе
 ```
 
 | ID | Поведение (на тестовой Postgres) |
@@ -205,7 +205,7 @@ public function setPasswordHash(int $id, string $hash, DateTimeImmutable $now): 
 | UNIT-UREPO-01 | `findByUsername('ANNA')` находит `anna` |
 | UNIT-UREPO-02 | `create` логина, который отличается от существующего только регистром, падает на уникальном индексе |
 | UNIT-UREPO-03 | `findActiveById` не находит заблокированного |
-| UNIT-UREPO-04 | `setStatus` и `setPasswordHash` меняют поле и `updated_at` |
+| UNIT-UREPO-04 | `setStatus` меняет статус, `auth_key` и `updated_at`; `setPassword` меняет хэш, `auth_key` и `updated_at`. Остальные поля не трогаются |
 | UNIT-UREPO-05 | `create` сохраняет активного админа с переданными логином, хэшем, `auth_key` и временем в `created_at` и `updated_at` |
 
 ### `common\services\CommentSerializer`
@@ -287,7 +287,7 @@ public function reset(string $key): void
 
 ### `common\redis\RedisClientInterface` и `YiiRedisClient`
 
-Адаптер над `yiisoft/yii2-redis`: код зависит от интерфейса, unit-тесты мокают его, а не компонент. Набор команд растёт вместе с потребителями (INCR, EXPIRE, GET, DEL — для лимита; SET NX EX и GETDEL — для токена WS; PUBLISH — для событий).
+Адаптер над `yiisoft/yii2-redis`: код зависит от интерфейса, unit-тесты мокают его, а не компонент. Набор команд растёт вместе с потребителями (INCR, EXPIRE, GET, DEL — для лимита; SET NX EX, GETDEL и GET — для токена WS и метки завершённой сессии; PUBLISH — для событий).
 
 | ID | Поведение (мок `yii\redis\Connection`) |
 |---|---|
@@ -297,61 +297,69 @@ public function reset(string $key): void
 ### `backend\forms\LoginForm`
 
 ```php
-public function __construct(yii\web\User $webUser, yii\web\Session $session, UserRepositoryInterface $users, RateLimiterInterface $limiter)
+public function __construct(yii\web\User $webUser, UserRepositoryInterface $users, RateLimiterInterface $limiter)
 public string $username; public string $password;
 public function login(string $ip): LoginResult // enum Success | Invalid | TooManyAttempts | Unavailable
 ```
 
 IP передаёт контроллер (`Request::getRemoteIP()`, то есть `REMOTE_ADDR`): форма не читает запрос сама.
 
-| ID | Поведение (моки: UserRepository, RateLimiter, компонент user, сессия) |
+| ID | Поведение (моки: UserRepository, RateLimiter, компонент user) |
 |---|---|
 | UNIT-LOGIN-01 | Пустые поля → ошибки `login.username_required` и `login.password_required`, `login()` не вызывает репозиторий |
 | UNIT-LOGIN-02 | Попытка засчитывается через `hit` до проверки пароля; `hit` вернул false (лимит исчерпан) → `TooManyAttempts`, пароль не проверяется. Решение по значению INCR, а не по отдельному GET: параллельные запросы не проскакивают мимо лимита |
-| UNIT-LOGIN-03 | Верные данные активного админа → `Success`. Попытка засчитана, затем счётчик сброшен, вызван `user->login()`, в сессию записан `auth_key`. Id сессии перегенерирует сам `user->login()`, это проверяет REG-A-11 |
+| UNIT-LOGIN-03 | Верные данные активного админа → `Success`. Попытка засчитана, затем счётчик сброшен, вызван `user->login()`: он сам записывает в сессию `auth_key` админа (`__authKey`, см. «Сессия после смены пароля или блокировки»). Id сессии перегенерирует сам `user->login()`, это проверяет REG-A-11 |
 | UNIT-LOGIN-04 | Провайдер неудач: неверный пароль, несуществующий логин, заблокированный админ → `Invalid`, ошибка `login.invalid`, счётчик вырос на 1 и не сброшен |
 | UNIT-LOGIN-05 | Для несуществующего логина `password_verify` всё равно выполняется по фиктивному хэшу |
 | UNIT-LOGIN-06 | Логин передаётся в репозиторий как есть, а ключ лимита строится от `lower(login)` |
 | UNIT-LOGIN-07 | `RateLimiterUnavailableException` → `Unavailable` (контроллер отвечает 503 с `login.unavailable`), пароль не проверяется, ошибка пишется в лог |
 
-### `backend\components\AdminSessionGuard`
+### Сессия после смены пароля или блокировки
 
-Поведение backend-приложения, которое срабатывает перед каждым действием.
+Своего поведения (`AdminSessionGuard`) нет: это уже делает `yii\web\User`. `login()` кладёт в сессию `auth_key` админа (`__authKey`), а на каждом запросе `renewAuthStatus` ищет админа через `findIdentity` (только активные) и сверяет ключ сессии через `validateAuthKey`. Не нашёлся или ключ другой — запрос гостевой, и доступ решает `AdminAccessControl`. Тесты фиксируют это на приложении админки: сессия с id админа и ключом на момент входа, действие под `AdminAccessControl` (`backend/tests/unit/SessionAuthKeyTest.php`).
 
-| ID | Поведение |
+| ID | Поведение (мок UserRepository) |
 |---|---|
 | UNIT-GUARD-01 | `auth_key` в сессии совпадает с текущим `auth_key` админа → запрос продолжается |
-| UNIT-GUARD-02 | Не совпадает (пароль сменили) → logout и редирект на логин; для JSON — 401 |
-| UNIT-GUARD-03 | Гость → поведение ничего не делает: доступ решает AccessControl |
+| UNIT-GUARD-02 | Не совпадает (пароль сменили) → запрос гостевой: HTML-маршрут уходит на логин, `/api/*` отвечает 401 |
+| UNIT-GUARD-03 | Админа заблокировали после входа (`findActiveById` → null) → запрос гостевой, HTML-маршрут уходит на логин |
 
 ### `common\security\WsTokenService`
 
 ```php
-public function issue(int $userId, string $sessionId): string
-public function consume(string $token): ?WsTokenClaims // WsTokenClaims: userId, sessionId
+public function issue(int $userId, string $sessionId, string $authKey): string
+public function consume(string $token): ?WsTokenClaims // WsTokenClaims: userId, sessionId, authKey
+public function endSession(string $sessionId): void
 ```
+
+`authKey` — `auth_key` админа на момент выдачи: после смены пароля он другой, и WS-сервер такой токен отклоняет (UNIT-CHK-04). `endSession` при logout помечает сессию завершённой вдвое дольше времени жизни токена: её ещё не использованные токены не действуют, в том числе токен, выданный параллельным запросом чуть позже метки (ADR 0002).
 
 | ID | Поведение (мок Redis) |
 |---|---|
-| UNIT-TOK-01 | `issue` генерирует 32 случайных байта в base64url (43 символа) и сохраняет `ws-token:{token}` → JSON `{userId, sessionId}` через SET NX EX 60 |
+| UNIT-TOK-01 | `issue` генерирует 32 случайных байта в base64url (43 символа) и сохраняет `ws-token:{token}` → JSON `{userId, sessionId, authKey}` через SET NX EX 60 |
 | UNIT-TOK-02 | Два `issue` подряд дают разные токены |
 | UNIT-TOK-03 | `consume` выполняет GETDEL: есть значение → claims; нет → null |
 | UNIT-TOK-04 | Провайдер токенов неверного формата (пусто, 42 символа, недопустимые символы) → null без обращения к Redis |
 | UNIT-TOK-05 | Битый JSON в Redis → null и запись в лог |
 | UNIT-TOK-06 | TTL 60 секунд передаётся в SET; истечение моделируется пустым ответом GETDEL |
+| UNIT-TOK-07 | `endSession` пишет метку `ws-session-ended:{sessionId}` через SET NX EX 120 — вдвое дольше жизни токенов сессии |
+| UNIT-TOK-08 | Токен сессии с меткой «завершена» → `consume` гасит его (GETDEL) и возвращает null |
 
 ### `common\security\SessionTerminator`
 
 ```php
+public function __construct(EventPublisherInterface $events, WsTokenService $tokens)
 public function sessionEnded(string $sessionId): void
-public function accessRevoked(int $userId): void
+public function accessRevoked(int $userId): void // @throws EventPublishException
 ```
 
-| ID | Поведение (мок EventPublisher) |
+| ID | Поведение (моки: EventPublisher, Redis под настоящим `WsTokenService`) |
 |---|---|
 | UNIT-TERM-01 | `sessionEnded` публикует в `ws.control` сообщение `{type: "session.ended", sessionId}` |
 | UNIT-TERM-02 | `accessRevoked` публикует `{type: "access.revoked", userId}` |
-| UNIT-TERM-03 | Если публикация упала, исключение не выходит наружу, ошибка пишется в лог |
+| UNIT-TERM-03 | Публикация `session.ended` упала → исключение не выходит наружу, ошибка пишется в лог: пользователь всё равно вышел |
+| UNIT-TERM-04 | `sessionEnded` гасит токены WS сессии (`WsTokenService::endSession`). Redis недоступен → исключение не выходит наружу, ошибка в логе, `session.ended` всё равно публикуется |
+| UNIT-TERM-05 | Публикация `access.revoked` упала → `EventPublishException` выходит наружу: команду запускает оператор, и он должен узнать, что WS-сервер об отзыве не узнал (UNIT-CLI-06) |
 
 ### `common\services\AdminAccountService`
 
@@ -362,7 +370,7 @@ public function unblock(string $username): void
 public function changePassword(string $username, string $password): void
 ```
 
-Исключения: `InvalidAdminDataException` (со списком ошибок) и `AdminNotFoundException`.
+Исключения: `InvalidAdminDataException` (со списком ошибок) и `AdminNotFoundException`. `block` и `changePassword` пропускают наружу `EventPublishException` из `accessRevoked`: изменение в БД к этому моменту уже сохранено.
 
 | ID | Поведение |
 |---|---|
@@ -370,9 +378,9 @@ public function changePassword(string $username, string $password): void
 | UNIT-ACC-02 | Пароль из 11 символов → ошибка, из 12 → ок |
 | UNIT-ACC-03 | `create` занятого логина (в том числе в другом регистре) → `InvalidAdminDataException` |
 | UNIT-ACC-04 | `create` хэширует пароль, генерирует `auth_key` и создаёт активного админа |
-| UNIT-ACC-05 | `block` ставит статус «заблокирован» и вызывает `accessRevoked` |
-| UNIT-ACC-06 | `unblock` ставит статус «активен» и `accessRevoked` не вызывает |
-| UNIT-ACC-07 | `changePassword` меняет хэш, перегенерирует `auth_key` (HTTP-сессии гаснут через `AdminSessionGuard`) и вызывает `accessRevoked` |
+| UNIT-ACC-05 | `block` ставит статус «заблокирован» вместе с новым `auth_key` и после этого вызывает `accessRevoked`. Новый ключ нужен, чтобы сессия, в которую во время блокировки никто не заходил, не ожила после `unblock` (REG-A-09d) |
+| UNIT-ACC-06 | `unblock` ставит статус «активен» с новым `auth_key` и `accessRevoked` не вызывает |
+| UNIT-ACC-07 | `changePassword` меняет хэш, перегенерирует `auth_key` (HTTP-сессии гаснут на проверке ключа в `yii\web\User`, UNIT-GUARD) и после этого вызывает `accessRevoked`. Пароль короче 12 символов → `InvalidAdminDataException`, ничего не меняется |
 | UNIT-ACC-08 | Провайдер операций с несуществующим логином → `AdminNotFoundException` |
 
 ### `console\controllers\AdminController`
@@ -383,9 +391,10 @@ public function changePassword(string $username, string $password): void
 |---|---|
 | UNIT-CLI-01 | Успех → код 0 и строка-подтверждение в stdout |
 | UNIT-CLI-02 | `InvalidAdminDataException` → код 1, ошибки в stderr |
-| UNIT-CLI-03 | `AdminNotFoundException` → код 2 |
+| UNIT-CLI-03 | `AdminNotFoundException` → код 2, `cli.admin.not_found` в stderr |
 | UNIT-CLI-04 | `create` и `password` читают пароль из STDIN и никогда не печатают его |
 | UNIT-CLI-05 | Поток ввода или вывода не открыт (например, закрыт) → `LogicException`. Проверка явная, не `assert()`: в production `assert` выключен |
+| UNIT-CLI-06 | Провайдер `admin/block`, `admin/password`: публикация `access.revoked` упала (Redis недоступен) → код 3, `cli.admin.ws_not_notified` в stderr, stdout пуст. Подробности ошибки — в лог консоли (stderr) |
 
 ---
 
@@ -430,7 +439,7 @@ public function changePassword(string $username, string $password): void
 | UNIT-AUTH-01 | `login` через GET от гостя → форма; от вошедшего → редирект на список |
 | UNIT-AUTH-02 | `Success` → редирект на `returnUrl`, если это относительный путь этого же хоста; иначе на список. Провайдер `returnUrl`: `/comments/5/edit` → туда; `https://evil.example`, `//evil.example`, `javascript:alert(1)`, `/\evil.example`, управляющие символы и пробелы (`/\t/evil.example`, `/\n/evil.example`, NUL в пути) → список |
 | UNIT-AUTH-03 | Провайдер результатов: `Invalid` → 422 и форма; `TooManyAttempts` → 429 и `login.too_many_attempts`; `Unavailable` → 503 и `login.unavailable` |
-| UNIT-AUTH-04 | `logout` вызывает `SessionTerminator::sessionEnded(id текущей сессии)` до `user->logout()`, затем редирект на логин |
+| UNIT-AUTH-04 | `logout` вызывает `SessionTerminator::sessionEnded(id текущей сессии)` до `user->logout()`, затем пользователь — гость и редирект на логин. `SessionTerminator` настоящий, мокаются его границы: EventPublisher и Redis |
 | UNIT-AUTH-05 | `behaviors()`: `login` доступен гостям, `logout` — вошедшим и только через POST |
 
 ### `backend\components\AdminAccessControl`
@@ -458,7 +467,7 @@ public function changePassword(string $username, string $password): void
 
 | ID | Поведение |
 |---|---|
-| UNIT-WTC-01 | `create` вызывает `WsTokenService::issue(id админа, id сессии)` и возвращает JSON `{token}` |
+| UNIT-WTC-01 | `create` вызывает `WsTokenService::issue(id админа, id сессии, auth_key админа)` и возвращает JSON `{token}` |
 | UNIT-WTC-02 | Ошибка Redis → 503 и JSON `{error: "unavailable"}` |
 | UNIT-WTC-03 | `behaviors()`: только вошедшие и только POST |
 
@@ -489,9 +498,10 @@ interface TimerInterface      { public function after(float $seconds, callable $
 
 ```php
 public function add(ConnectionInterface $c): void
-public function authenticate(ConnectionInterface $c, int $userId, string $sessionId): void
+public function authenticate(ConnectionInterface $c, WsTokenClaims $claims): void
 public function remove(ConnectionInterface $c): void
 public function isAuthenticated(ConnectionInterface $c): bool
+public function claimsOf(ConnectionInterface $c): ?WsTokenClaims // токен, которым соединение авторизовалось
 public function authenticated(): iterable
 public function bySession(string $sessionId): iterable
 public function byUser(int $userId): iterable
@@ -499,8 +509,8 @@ public function byUser(int $userId): iterable
 
 | ID | Поведение |
 |---|---|
-| UNIT-REG-01 | Добавленное соединение не авторизовано и не попадает в `authenticated()` |
-| UNIT-REG-02 | После `authenticate` соединение находится через `authenticated`, `bySession` и `byUser` |
+| UNIT-REG-01 | Добавленное соединение не авторизовано, `claimsOf` → null, в `authenticated()` его нет |
+| UNIT-REG-02 | После `authenticate` соединение находится через `authenticated`, `bySession` и `byUser`, `claimsOf` отдаёт его claims |
 | UNIT-REG-03 | `remove` убирает соединение из всех выборок; повторный `remove` не падает |
 | UNIT-REG-04 | Несколько соединений одной сессии и одного админа находятся все; чужие не попадают |
 
@@ -519,7 +529,7 @@ public function isAllowed(?string $origin): bool
 ### `ws\ActiveAdminChecker`
 
 ```php
-public function isActive(int $userId): bool
+public function hasValidAccess(int $userId, string $authKey): bool // активен и auth_key тот же, что при выдаче токена; проверка при auth и на каждом ping
 ```
 
 | ID | Поведение (моки: UserRepository, соединение с БД) |
@@ -527,6 +537,7 @@ public function isActive(int $userId): bool
 | UNIT-CHK-01 | Активный → true, заблокированный или несуществующий → false |
 | UNIT-CHK-02 | Ошибка соединения с БД → переподключение и один повтор. Повтор успешен → результат |
 | UNIT-CHK-03 | Повтор тоже упал → `AdminCheckUnavailableException` |
+| UNIT-CHK-04 | Админ активен, но `auth_key` не тот, что в токене (пароль сменили после выдачи) → false |
 
 ### `ws\MessageHandler`
 
@@ -544,13 +555,14 @@ public function onClose(ConnectionInterface $c): void
 | UNIT-MH-01 | `onConnect` добавляет соединение в реестр и ставит таймер авторизации на 5 секунд и таймер тишины на 60 |
 | UNIT-MH-02 | Таймер сработал, а соединение не авторизовано → `close(4401)` |
 | UNIT-MH-03 | Верный `auth` → `consume`, проверка активности, `authenticate`, отмена таймера авторизации, отправка `{type: "auth.ok"}` |
-| UNIT-MH-04 | Провайдер: `consume` вернул null; админ не активен → `close(4401)` |
+| UNIT-MH-04 | Провайдер: `consume` вернул null; админ не активен; `auth_key` сменился после выдачи токена; сессия токена завершена (logout) → `close(4401)` |
 | UNIT-MH-05 | Провайдер: `AdminCheckUnavailableException`, Redis недоступен при `consume` → `close(1011)` |
 | UNIT-MH-06 | Провайдер нарушений протокола: больше 4096 байт, не JSON, JSON не объект, JSON без `type`, `type` не строка, неизвестный `type`, `ping` до авторизации, повторный `auth` → `close(4400)`. Ровно 4096 байт — не нарушение |
-| UNIT-MH-07 | `ping` после авторизации → `{type: "pong"}` |
+| UNIT-MH-07 | `ping` после авторизации, доступ админа ещё действует → `{type: "pong"}` |
 | UNIT-MH-08 | Каждое входящее сообщение отменяет таймер тишины и ставит новый на 60 секунд. Таймер сработал → `close(1001)` |
 | UNIT-MH-09 | `onClose` удаляет соединение из реестра и отменяет его таймеры; для отклонённого handshake ничего не ломает |
 | UNIT-MH-10 | `onConnect` с `Origin`, который не пропускает `OriginPolicy` → `reject()` (HTTP 403), соединение не в реестре, таймеров нет |
+| UNIT-MH-11 | `ping` после авторизации перепроверяет доступ (`hasValidAccess` по claims соединения). Провайдер: админ заблокирован, `auth_key` сменился → `close(4403)`, `pong` не уходит. БД недоступна и после переподключения → `close(1011)`. Страховка на случай, если `access.revoked` из `ws.control` потерялся (ADR 0002) |
 
 ### `ws\RedisDispatcher`
 
@@ -563,10 +575,10 @@ public function dispatch(string $channel, string $payload): void
 | UNIT-DSP-01 | `comments.events` → сообщение уходит как есть всем авторизованным соединениям и не уходит неавторизованным |
 | UNIT-DSP-02 | `ws.control` `session.ended` → `close(4403)` всем соединениям этой сессии; остальные не тронуты |
 | UNIT-DSP-03 | `ws.control` `access.revoked` → `close(4403)` всем соединениям админа |
-| UNIT-DSP-04 | Провайдер: битый JSON, JSON не объект, неизвестный канал, неизвестный `type`, нет `type` → ничего не отправлено, предупреждение в логе |
+| UNIT-DSP-04 | Провайдер: битый JSON, JSON не объект, неизвестный канал, неизвестный `type`, нет `type`, событие комментария в `ws.control` и управляющее сообщение в `comments.events`, `session.ended` без `sessionId`, `access.revoked` с `userId` не числом → ничего не отправлено и не закрыто, предупреждение в логе |
 | UNIT-DSP-05 | Если одно соединение упало на `send`, рассылка остальным продолжается, а упавшее закрывается с 1011 |
 
-Подписку на Redis держит `ws/runtime/RedisSubscriber` (workerman/redis). Со срезом 05 процесс подписан только на `comments.events`, `ws.control` добавляет срез 07 (DSP-02, DSP-03).
+Подписку на Redis держит `ws/runtime/RedisSubscriber` (workerman/redis). Процесс подписан на `comments.events` (срез 05) и `ws.control` (срез 07, DSP-02, DSP-03).
 
 ### `ws\RedisSubscriberSettings`
 
@@ -714,7 +726,7 @@ export function readPage(document) // → { wsUrl, loginUrl, csrfToken, indicato
 export function createWsClient({ url, api, backoff, WebSocketImpl, timers, onEvent, onStatus, onReconnected, navigateToLogin }) // → { start(), stop() }
 ```
 
-`onEvent` и `onReconnected` появились со срезом 05 (JS-WS-03, JS-WS-08), закрытие 4403 — со срезом 07 (JS-WS-04). До него любой код закрытия — разрыв с переподключением.
+`onEvent` и `onReconnected` появились со срезом 05 (JS-WS-03, JS-WS-08), закрытие 4403 — со срезом 07 (JS-WS-04). Любой другой код закрытия — разрыв с переподключением.
 
 | ID | Поведение (фейковый WebSocket, мок api, фейковые таймеры) |
 |---|---|

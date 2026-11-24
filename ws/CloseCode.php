@@ -17,4 +17,7 @@ final class CloseCode
 
     /** Нет авторизации или токен неверен: клиент берёт новый токен. */
     public const int UNAUTHORIZED = 4401;
+
+    /** Сессия завершена (logout, блокировка, смена пароля): клиент уходит на логин без переподключения. */
+    public const int SESSION_ENDED = 4403;
 }

@@ -5,6 +5,7 @@ import type { Redis } from "ioredis";
 import type { Pool } from "pg";
 
 import { logIn } from "./admin.ts";
+import type { Credentials } from "./admin.ts";
 import { requireEnv } from "./env.ts";
 import { admin, connectDb } from "./factories.ts";
 import type { Admin } from "./factories.ts";
@@ -25,6 +26,8 @@ interface TestFixtures {
   adminAccount: Admin;
   /** HTTP-клиент без браузера, вошедший админом `adminAccount`: для токена WS и действий админа в REG-WS. */
   adminApi: APIRequestContext;
+  /** Ещё одна сессия админа: свой HTTP-клиент без браузера, вошедший этим админом. Закрывается после теста. */
+  signIn: (credentials: Credentials) => Promise<APIRequestContext>;
   /** Соединения REG-WS. Всё, что тест открыл, закрывается после теста, а не в его теле. */
   ws: { open: () => Promise<WsProbe>; openAuthenticated: (token: string) => Promise<WsProbe> };
 }
@@ -67,6 +70,17 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     await logIn(request, adminAccount);
     await use(request);
     await request.dispose();
+  },
+  signIn: async ({ playwright }, use) => {
+    const sessions: APIRequestContext[] = [];
+    await use(async (credentials) => {
+      const request = await playwright.request.newContext();
+      sessions.push(request);
+      await logIn(request, credentials);
+
+      return request;
+    });
+    await Promise.all(sessions.map(async (request) => request.dispose()));
   },
   ws: async ({}, use) => {
     const probes: WsProbe[] = [];

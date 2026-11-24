@@ -19,6 +19,8 @@ final class ActiveAdminCheckerTest extends Unit
 {
     private const int ADMIN_ID = 7;
 
+    private const string AUTH_KEY = 'auth-key-of-anna';
+
     #[TestDox('UNIT-CHK-01: активный админ → true, заблокированный или несуществующий → false')]
     #[DataProvider('admins')]
     public function testChecksAdminIsActive(?User $found, bool $expected): void
@@ -27,7 +29,7 @@ final class ActiveAdminCheckerTest extends Unit
         $users->method('findActiveById')->willReturnMap([[self::ADMIN_ID, $found]]);
         $checker = new ActiveAdminChecker($users, self::createStub(Connection::class));
 
-        $active = $checker->isActive(self::ADMIN_ID);
+        $active = $checker->hasValidAccess(self::ADMIN_ID, self::AUTH_KEY);
 
         self::assertSame($expected, $active);
     }
@@ -40,9 +42,21 @@ final class ActiveAdminCheckerTest extends Unit
     public static function admins(): array
     {
         return [
-            'активный' => [new User(['id' => self::ADMIN_ID, 'status' => User::STATUS_ACTIVE]), true],
+            'активный' => [new User(['id' => self::ADMIN_ID, 'status' => User::STATUS_ACTIVE, 'auth_key' => self::AUTH_KEY]), true],
             'заблокированный или несуществующий' => [null, false],
         ];
+    }
+
+    #[TestDox('UNIT-CHK-04: auth_key активного админа не тот, что в токене (пароль сменили после выдачи) → false')]
+    public function testChangedAuthKeyIsNotActive(): void
+    {
+        $users = self::createStub(UserRepositoryInterface::class);
+        $users->method('findActiveById')->willReturn(new User(['id' => self::ADMIN_ID, 'status' => User::STATUS_ACTIVE, 'auth_key' => 'auth-key-after-password-change']));
+        $checker = new ActiveAdminChecker($users, self::createStub(Connection::class));
+
+        $active = $checker->hasValidAccess(self::ADMIN_ID, self::AUTH_KEY);
+
+        self::assertFalse($active);
     }
 
     #[TestDox('UNIT-CHK-02: ошибка соединения с БД → переподключение и один повтор, повтор успешен → результат')]
@@ -51,12 +65,12 @@ final class ActiveAdminCheckerTest extends Unit
         $users = self::createStub(UserRepositoryInterface::class);
         $users->method('findActiveById')->willReturnCallback(Outcomes::inOrder(
             new Exception('server closed the connection unexpectedly'),
-            new User(['id' => self::ADMIN_ID, 'status' => User::STATUS_ACTIVE]),
+            new User(['id' => self::ADMIN_ID, 'status' => User::STATUS_ACTIVE, 'auth_key' => self::AUTH_KEY]),
         ));
         $db = $this->createMock(Connection::class);
         $db->expects(self::once())->method('close');
 
-        $active = (new ActiveAdminChecker($users, $db))->isActive(self::ADMIN_ID);
+        $active = (new ActiveAdminChecker($users, $db))->hasValidAccess(self::ADMIN_ID, self::AUTH_KEY);
 
         self::assertTrue($active);
     }
@@ -70,6 +84,6 @@ final class ActiveAdminCheckerTest extends Unit
 
         $this->expectException(AdminCheckUnavailableException::class);
 
-        $checker->isActive(self::ADMIN_ID);
+        $checker->hasValidAccess(self::ADMIN_ID, self::AUTH_KEY);
     }
 }

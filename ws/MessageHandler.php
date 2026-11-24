@@ -11,6 +11,8 @@ use common\security\WsTokenService;
 /**
  * Протокол WS-сервера (ADR 0002, docs/test-plans/regression.md, «WS-контракты»): handshake только с Origin админки,
  * первым сообщением {type: "auth", token}, затем {type: "ping"}. На любое нарушение соединение закрывается своим кодом.
+ * На каждом ping доступ админа перепроверяется по БД: если сообщение о блокировке или смене пароля из ws.control
+ * потерялось, соединение всё равно закроется, самое позднее через таймаут тишины.
  */
 final class MessageHandler
 {
@@ -75,7 +77,7 @@ final class MessageHandler
 
         try {
             $claims = $this->tokens->consume($this->tokenOf($raw));
-            $active = $claims instanceof WsTokenClaims && $this->admins->isActive($claims->userId);
+            $active = $claims instanceof WsTokenClaims && $this->admins->hasValidAccess($claims->userId, $claims->authKey);
         } catch (AdminCheckUnavailableException|RedisUnavailableException) {
             $connection->close(CloseCode::INTERNAL_ERROR);
 
@@ -88,15 +90,30 @@ final class MessageHandler
             return;
         }
 
-        $this->registry->authenticate($connection, $claims->userId, $claims->sessionId);
+        $this->registry->authenticate($connection, $claims);
         $this->timer->cancel($this->timers[$connection->id()]['auth'] ?? 0);
         $connection->send(['type' => 'auth.ok']);
     }
 
     private function pong(ConnectionInterface $connection): void
     {
-        if (!$this->registry->isAuthenticated($connection)) {
+        $claims = $this->registry->claimsOf($connection);
+        if (!$claims instanceof WsTokenClaims) {
             $connection->close(CloseCode::PROTOCOL_VIOLATION);
+
+            return;
+        }
+
+        try {
+            $valid = $this->admins->hasValidAccess($claims->userId, $claims->authKey);
+        } catch (AdminCheckUnavailableException) {
+            $connection->close(CloseCode::INTERNAL_ERROR);
+
+            return;
+        }
+
+        if (!$valid) {
+            $connection->close(CloseCode::SESSION_ENDED);
 
             return;
         }

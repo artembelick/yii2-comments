@@ -169,6 +169,25 @@ describe("ws-client", () => {
     expect(reconnects).toStrictEqual(["reconnected"]);
   });
 
+  it("UNIT-JS-WS-04: закрытие с 4403 → статус offline, navigateToLogin, переподключения нет", async () => {
+    const fetchToken = vi.fn().mockResolvedValue("token-1");
+    const { wsClient, sockets, statuses, logins } = client(fetchToken);
+    wsClient.start();
+    await vi.advanceTimersByTimeAsync(0);
+    sockets[0]?.open();
+    sockets[0]?.receive({ type: "auth.ok" });
+
+    sockets[0]?.drop(4403);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect([statuses, logins, sockets.length, fetchToken.mock.calls.length]).toStrictEqual([
+      ["reconnecting", "online", "offline"],
+      ["login"],
+      1,
+      1,
+    ]);
+  });
+
   it.each([4400, 4401, 1011, 1001, 1006])(
     "UNIT-JS-WS-05: закрытие с кодом %i → reconnecting, до конца паузы backoff нового соединения нет",
     async (code) => {

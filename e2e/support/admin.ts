@@ -62,6 +62,11 @@ export async function submitAdminForm(
   }
 }
 
+/** Выход без UI: POST /logout с CSRF, как кнопка «Выйти». */
+export async function logOut(request: APIRequestContext): Promise<void> {
+  await submitAdminForm(request, "/logout");
+}
+
 /** Одноразовый токен WS для вошедшего админа: POST /api/ws-token с CSRF-заголовком, как у клиента админки. */
 export async function issueWsToken(request: APIRequestContext): Promise<string> {
   const csrf = await csrfTokenAt(request, "/");
