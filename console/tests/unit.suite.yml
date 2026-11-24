@@ -1,0 +1,5 @@
+suite_namespace: console\tests\unit
+actor: UnitTester
+modules:
+  enabled:
+    - Asserts

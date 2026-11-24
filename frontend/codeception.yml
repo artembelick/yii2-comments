@@ -1,0 +1,32 @@
+namespace: frontend\tests
+actor_suffix: Tester
+paths:
+  tests: tests
+  output: tests/_output
+  data: tests/_data
+  support: tests/_support
+bootstrap: _bootstrap.php
+params:
+  - env
+settings:
+  colors: true
+  memory_limit: 1024M
+  shuffle: true
+  report_useless_tests: true
+  disallow_test_output: true
+  be_strict_about_changes_to_global_state: true
+  convert_deprecations_to_exceptions: true
+  error_level: E_ALL
+coverage:
+  enabled: true
+  include:
+    - ./*
+  # Не считаются (ADR 0001): конфиги, views, миграции, entrypoint'ы, сами тесты и runtime.
+  exclude:
+    - config/*
+    - views/*
+    - migrations/*
+    - web/*
+    - runtime/*
+    - tests/*
+    - messages/*

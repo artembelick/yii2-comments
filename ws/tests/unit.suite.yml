@@ -1,0 +1,5 @@
+suite_namespace: ws\tests\unit
+actor: UnitTester
+modules:
+  enabled:
+    - Asserts

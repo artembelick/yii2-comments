@@ -38,7 +38,7 @@ WS-клиент написан на чистом JS без сборки, но с
 **Прочее:** hadolint для Dockerfile, `composer validate --strict`, сверка ID из тест-планов с именами тестов.
 
 **Строгость тестов:**
-- **Тест без проверок — ошибка.** В PHPUnit включены `failOnRisky`, `failOnWarning`, `failOnDeprecation` и `beStrictAboutTestsThatDoNotTestAnything`. В Vitest правило линтера требует `expect.hasAssertions()`.
+- **Тест без проверок — ошибка.** В PHPUnit включены `failOnRisky`, `failOnWarning`, `failOnDeprecation` и `beStrictAboutTestsThatDoNotTestAnything`. В Vitest это делает `expect.requireAssertions` в конфиге: тест без проверок падает при запуске. В Codeception тесты без проверок, пропуски и предупреждения роняют прогон через `tools/checks junit`, потому что сам Codeception на них не падает.
 - **Часовой пояс тестовых процессов зафиксирован: `TZ=UTC`** в PHP и в Vitest. Часовой пояс отображения (Europe/Moscow) передаётся явно.
 - **Playwright:**
   - `retries: 0`, потому что флейк считается багом;

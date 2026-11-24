@@ -1,0 +1,17 @@
+{
+  "name": "comments-e2e",
+  "private": true,
+  "description": "Playwright: smoke, REG-WS и e2e. Запускается в контейнере playwright той же версии, что @playwright/test.",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "10.6.0",
+    "@playwright/test": "1.65.1",
+    "@types/node": "22.20.5",
+    "@types/pg": "8.23.1",
+    "ioredis": "6.1.0",
+    "pg": "8.23.1"
+  }
+}

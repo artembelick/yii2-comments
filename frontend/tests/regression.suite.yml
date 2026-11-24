@@ -1,0 +1,10 @@
+# REST-regression: HTTP-запросы к тестовому стенду без браузера. Ярусы — группы pristine, parallel, exclusive.
+suite_namespace: frontend\tests\regression
+actor: RegressionTester
+modules:
+  enabled:
+    - PhpBrowser:
+        url: '%PUBLIC_URL%'
+    - REST:
+        depends: PhpBrowser
+        url: '%PUBLIC_URL%'

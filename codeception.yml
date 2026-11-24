@@ -1,0 +1,21 @@
+# Корневой конфиг собирает тесты всех приложений и считает общее покрытие (docs/test-plans/README.md).
+include:
+  - common
+  - frontend
+  - backend
+  - console
+  - ws
+paths:
+  output: tests/_output
+settings:
+  colors: true
+  memory_limit: 1024M
+  # ИЗ-1: случайный порядок, seed печатается в начале прогона. Повтор: --seed <число>.
+  shuffle: true
+  # ПР-5: тест без проверок отмечается как useless; tools/checks junit роняет на нём прогон.
+  report_useless_tests: true
+  disallow_test_output: true
+  be_strict_about_changes_to_global_state: true
+  # Deprecation и warning PHP становятся ошибками теста.
+  convert_deprecations_to_exceptions: true
+  error_level: E_ALL

@@ -1,0 +1,6 @@
+# Тестовый стенд: docker compose -p comments-test --env-file .env.test -f docker-compose.yml -f docker-compose.test.yml
+# Свой проект — значит свои контейнеры, сеть и том Postgres. Наружу ничего не публикуется,
+# тесты ходят на стенд изнутри сети compose.
+services:
+  nginx:
+    ports: !reset []

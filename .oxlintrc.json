@@ -1,0 +1,133 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "jsdoc", "vitest", "promise", "node"],
+  // Все стабильные категории на уровне error. nursery не включена: это правила в разработке,
+  // они меняются от версии к версии и дают ложные срабатывания.
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "pedantic": "error",
+    "perf": "error",
+    "style": "error",
+    "restriction": "error"
+  },
+  "ignorePatterns": [
+    "vendor/**",
+    "**/node_modules/**",
+    "**/web/assets/**",
+    "**/tests/_output/**",
+    "e2e/test-results/**",
+    "e2e/playwright-report/**",
+    // Деревья-фикстуры CLI tools/checks — данные с нарушениями, а не код.
+    "tools/checks/__tests__/fixtures/**"
+  ],
+  "rules": {
+    // Лимиты из docs/test-plans/README.md.
+    "max-lines": ["error", { "max": 500, "skipBlankLines": false, "skipComments": false }],
+    "max-statements": ["error", 35],
+    "max-params": ["error", 5],
+    "complexity": ["error", 10],
+    "import/max-dependencies": ["error", { "max": 20 }],
+    // 0, 1 и -1 — пустота, первый элемент и сдвиг на единицу, а не магические числа. Остальное — именованные константы.
+    "no-magic-numbers": ["error", { "ignore": [0, 1, -1], "ignoreArrayIndexes": true, "ignoreDefaultValues": true }],
+
+    // Порядок импортов задаёт oxfmt (sortImports). Правило ESLint сортирует по синтаксису импорта и спорит с ним.
+    "sort-imports": "off",
+    // Порядок ключей несёт смысл: в конфигах и ожидаемых объектах важное идёт первым.
+    "sort-keys": "off",
+    // Одна переменная — одно объявление: так читается diff. Режим always требует обратного.
+    "one-var": "off",
+    // Тернарный оператор в выражениях — нормальная форма. В тестах ветвления запрещает tools/checks (ЧТ-4).
+    "no-ternary": "off",
+    // Стрелочные функции — для локальных хелперов, function — для экспортируемых. Правило требует один стиль на всё.
+    "func-style": "off",
+    // С noUncheckedIndexedAccess сравнение с undefined — обычная проверка отсутствия значения.
+    "no-undefined": "off",
+    // Группы регулярных выражений разбираются деструктуризацией рядом с шаблоном, имена групп её дублируют.
+    "prefer-named-capture-group": "off",
+    // Top-level await — штатная часть ESM в Node 22, entrypoint'ы используют его вместо цепочки then.
+    "node/no-top-level-await": "off",
+    // Типы в JSDoc и TS и есть документация: описания параметров и результатов повторяли бы их имена.
+    "jsdoc/require-param-description": "off",
+    "jsdoc/require-returns-description": "off",
+    "jsdoc/require-property-description": "off",
+    // Только именованные экспорты: их видно при поиске и импорте. Конфиги раннеров — исключение ниже.
+    "import/no-named-export": "off",
+    "import/prefer-default-export": "off",
+    // Экспорт стоит рядом с объявлением, а не собран в конце файла.
+    "import/group-exports": "off",
+    "import/exports-last": "off",
+    // Сборки и алиасов нет, модули связаны относительными путями.
+    "import/no-relative-parent-imports": "off",
+    // Ограничения для старых сред выполнения. Целевая среда — ES2023 (Node 22 и современный браузер админки).
+    "oxc/no-async-await": "off",
+    "oxc/no-optional-chaining": "off",
+    "oxc/no-rest-spread-properties": "off",
+    // Конфликтует с typescript/promise-function-async: функция, которая возвращает промис, объявляется async,
+    // даже если внутри нет await. Оставляем правило, которое следит за типом результата.
+    "require-await": "off",
+    // Конфликтует с unicorn/prefer-spread: склейка массивов внутри map пишется через spread.
+    // Выигрыш от правила — микрооптимизация на коротких списках.
+    "oxc/no-map-spread": "off",
+    // В JS readonly-типы через JSDoc громоздки и не дают проверки на месте вызова. Аргументы не мутируются по стилю.
+    "typescript/prefer-readonly-parameter-types": "off",
+    // Globals в Vitest выключены, функции импортируются явно.
+    "vitest/no-importing-vitest-globals": "off",
+    // Таймаут задан один на прогон в конфиге раннера.
+    "vitest/require-test-timeout": "off",
+    // ПР-5 обеспечивает expect.requireAssertions в vitest.config.js: тест без проверок падает на запуске,
+    // это строже правила линтера и не требует expect.hasAssertions() в каждом тесте.
+    "vitest/prefer-expect-assertions": "off"
+  },
+  "overrides": [
+    {
+      // Тесты: числа в ожиданиях — это и есть данные теста; describe-блок — список тестов, лимит длины файла 500 строк.
+      "files": ["**/__tests__/**", "e2e/tests/**"],
+      "rules": {
+        "no-magic-numbers": "off",
+        "max-lines-per-function": "off"
+      }
+    },
+    {
+      // Код на Node: проверки, e2e и конфиги раннеров. Модули Node и переменные окружения — их работа.
+      // Для клиента админки (backend/web/js) оба правила остаются включены.
+      "files": ["tools/**", "e2e/**", "*.config.js"],
+      "rules": {
+        "import/no-nodejs-modules": "off",
+        "node/no-process-env": "off"
+      }
+    },
+    {
+      // Конфиги Vitest и Playwright обязаны экспортировать конфиг по умолчанию.
+      "files": ["*.config.js", "e2e/playwright.config.ts"],
+      "rules": {
+        "import/no-default-export": "off",
+        "no-magic-numbers": "off",
+        // Конфиг Vitest — не тест: печать seed при загрузке конфига и есть его задача.
+        "vitest/require-hook": "off"
+      }
+    },
+    {
+      // В TypeScript типы параметров и результата стоят в сигнатуре, JSDoc-теги их только повторяли бы.
+      "files": ["**/*.ts"],
+      "rules": {
+        "jsdoc/require-param": "off",
+        "jsdoc/require-returns": "off"
+      }
+    },
+    {
+      // Фикстуры Playwright без зависимостей объявляются через пустой паттерн ({}, use) — так требует API.
+      "files": ["e2e/support/**"],
+      "rules": {
+        "no-empty-pattern": "off"
+      }
+    },
+    {
+      // FNV-1a — побитовый хэш по определению.
+      "files": ["e2e/support/faker.ts"],
+      "rules": {
+        "no-bitwise": "off"
+      }
+    }
+  ]
+}

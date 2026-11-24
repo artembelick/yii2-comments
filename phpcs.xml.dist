@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<!--
+  phpcs отвечает только за лимиты (docs/test-plans/README.md). Стиль — php-cs-fixer.
+  Лимит «до 5 параметров» проверяет tools/checks (правило php-max-params): в slevomat и phpcs такого sniff нет.
+-->
+<ruleset name="comments-limits">
+    <arg name="extensions" value="php"/>
+    <arg name="cache" value=".phpcs-cache"/>
+    <arg name="colors"/>
+    <arg value="sp"/>
+
+    <file>common</file>
+    <file>frontend</file>
+    <file>backend</file>
+    <file>console</file>
+    <file>ws</file>
+    <file>yii</file>
+
+    <exclude-pattern>*/runtime/*</exclude-pattern>
+    <exclude-pattern>*/web/assets/*</exclude-pattern>
+    <exclude-pattern>*/tests/_output/*</exclude-pattern>
+    <exclude-pattern>*/tests/_support/_generated/*</exclude-pattern>
+
+    <!-- Строк в файле: до 500 (ЧТ-8). -->
+    <rule ref="SlevomatCodingStandard.Files.FileLength">
+        <properties>
+            <property name="maxLinesLength" value="500"/>
+            <property name="includeComments" value="true"/>
+            <property name="includeWhitespace" value="true"/>
+        </properties>
+    </rule>
+
+    <!-- Операторов в методе: до 35. Sniff считает строки кода без комментариев и пустых строк —
+         это и есть число операторов, когда на строке один оператор (php-cs-fixer это обеспечивает). -->
+    <rule ref="SlevomatCodingStandard.Functions.FunctionLength">
+        <properties>
+            <property name="maxLinesLength" value="35"/>
+        </properties>
+    </rule>
+
+    <!-- Цикломатическая сложность метода: до 10. -->
+    <rule ref="Generic.Metrics.CyclomaticComplexity">
+        <properties>
+            <property name="complexity" value="10"/>
+            <property name="absoluteComplexity" value="10"/>
+        </properties>
+    </rule>
+</ruleset>
