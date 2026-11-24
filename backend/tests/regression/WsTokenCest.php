@@ -24,7 +24,7 @@ final class WsTokenCest
         $I->assertNotSame($first, $second);
     }
 
-    /** REG-A-60b: POST токена без CSRF-заголовка → 400, токен не выдан */
+    /** REG-A-60b: POST токена без CSRF-заголовка → 400, тело ровно error = "csrf": токен не выдан */
     public function tokenWithoutCsrfIsNotIssued(RegressionTester $I): void
     {
         $I->amSignedInAs($I->haveAdmin());
@@ -32,7 +32,7 @@ final class WsTokenCest
         $I->sendPost('/api/ws-token');
 
         $I->seeResponseCodeIs(400);
-        $I->dontSeeResponseContains('"token"');
+        $I->assertSame('{"error":"csrf"}', $I->grabResponse());
     }
 
     /** REG-A-60b: ответ с токеном не кэшируется: Cache-Control: no-store */

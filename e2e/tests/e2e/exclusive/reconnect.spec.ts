@@ -16,10 +16,13 @@ test("E2E-08: после разрыва WS клиент переподключа
   const ws = await interceptAdminWs(admin1Page);
   await openAdminPage(admin1Page, await admin(db, faker));
 
-  await test.step("1. Соединение рвётся кодом 1006 → «Переподключение…»; пока клиент не подключён, гость отправляет комментарий", async () => {
+  await test.step("1. Соединение рвётся кодом 1006 → «Переподключение…»", async () => {
     await ws.breakConnection();
 
     await expect(indicator).toHaveText(message("ws.status.reconnecting"));
+  });
+
+  await test.step("2. Пока клиент не подключён, гость отправляет комментарий → флэш «отправлен»", async () => {
     await guest.goto("/");
     await guest.getByRole("textbox", { name: message("form.name") }).fill(missedComment.name);
     await guest.getByRole("textbox", { name: message("form.text") }).fill(missedComment.text);
@@ -27,13 +30,13 @@ test("E2E-08: после разрыва WS клиент переподключа
     await expect(guest.getByText(message("comment.created"))).toBeVisible();
   });
 
-  await test.step("2. Переподключение отпущено → «Онлайн»", async () => {
+  await test.step("3. Переподключение отпущено → «Онлайн»", async () => {
     ws.releaseReconnect();
 
     await expect(indicator).toHaveText(message("ws.status.online"));
   });
 
-  await test.step("3. Комментарий, созданный во время разрыва, есть в списке без перезагрузки страницы", async () => {
+  await test.step("4. Комментарий, созданный во время разрыва, есть в списке без перезагрузки страницы", async () => {
     await expect(listRow(admin1Page, missedComment.text)).toBeVisible();
   });
 });

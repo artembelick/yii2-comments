@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use backend\components\ApiErrorHandler;
 use common\models\User;
 use yii\log\FileTarget;
 use yii\redis\Session;
@@ -20,9 +21,9 @@ return [
         'wsUrl' => 'ws' . substr($env('ADMIN_URL'), strlen('http')) . '/ws',
     ],
     'components' => [
-        // Ошибки HTML-страниц — своим видом в layout части (REG-G-24, REG-A-55). JSON-эндпоинты ставят формат JSON
-        // раньше, чем может случиться ошибка, и этот вид не получают (REG-A-61b).
-        'errorHandler' => ['errorAction' => 'site/error'],
+        // Ошибки HTML-страниц — своим видом в layout части (REG-G-24, REG-A-55). Ошибки адресов /api/* — JSON
+        // {"error": "<код>"}, этот вид они не получают (REG-A-61b).
+        'errorHandler' => ['class' => ApiErrorHandler::class, 'errorAction' => 'site/error'],
         'request' => [
             'cookieValidationKey' => $env('BACKEND_COOKIE_KEY'),
             'csrfParam' => '_csrf-backend',

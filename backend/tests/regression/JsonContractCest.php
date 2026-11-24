@@ -79,7 +79,7 @@ final class JsonContractCest
     }
 
     /**
-     * REG-A-61b: ошибка фреймворка (CSRF, метод) на JSON-эндпоинте — JSON Yii со status, а не HTML-вид ошибки
+     * REG-A-61b: ошибка фреймворка (CSRF, метод, маршрут) на адресе /api/* — JSON той же формы, что свои ошибки
      *
      * @param Example<string, mixed> $example
      */
@@ -87,26 +87,26 @@ final class JsonContractCest
     public function frameworkErrorIsJson(RegressionTester $I, Example $example): void
     {
         $I->amSignedInAs($I->haveAdmin());
-        $code = Examples::int($example, 'code');
 
         $I->send(Examples::string($example, 'method'), Examples::string($example, 'url'));
 
-        $I->seeResponseCodeIs($code);
+        $I->seeResponseCodeIs(Examples::int($example, 'code'));
         $I->seeHttpHeader('Content-Type', self::JSON);
-        $I->seeResponseContainsJson(['status' => $code]);
+        $I->assertSame(Examples::string($example, 'body'), $I->grabResponse());
     }
 
     /**
      * Запросы вошедшего админа без CSRF-заголовка, которые отклоняет сам фреймворк. Метод проверяется раньше CSRF.
      *
-     * @return array<string, array{method: string, url: string, code: int}>
+     * @return array<string, array{method: string, url: string, code: int, body: string}>
      */
     private function frameworkErrors(): array
     {
         return [
-            'токен без CSRF → 400' => ['method' => 'POST', 'url' => '/api/ws-token', 'code' => 400],
-            'GET токена → 405' => ['method' => 'GET', 'url' => '/api/ws-token', 'code' => 405],
-            'POST списка → 405' => ['method' => 'POST', 'url' => '/api/comments', 'code' => 405],
+            'токен без CSRF → 400' => ['method' => 'POST', 'url' => '/api/ws-token', 'code' => 400, 'body' => '{"error":"csrf"}'],
+            'GET токена → 405' => ['method' => 'GET', 'url' => '/api/ws-token', 'code' => 405, 'body' => '{"error":"method_not_allowed"}'],
+            'POST списка → 405' => ['method' => 'POST', 'url' => '/api/comments', 'code' => 405, 'body' => '{"error":"method_not_allowed"}'],
+            'неизвестный адрес → 404' => ['method' => 'GET', 'url' => '/api/unknown', 'code' => 404, 'body' => '{"error":"not_found"}'],
         ];
     }
 

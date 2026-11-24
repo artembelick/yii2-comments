@@ -14,13 +14,14 @@ use yii\db\Expression;
 /**
  * Разметка в имени и тексте комментария в HTML-админке (docs/test-plans/regression.md, REG-A-34). Сервер выводит
  * строки списка и форму правки сам, поэтому stored XSS здесь бил бы прямо в админа. Комментарий старше всех на
- * стенде: он последний на последней странице вкладки (`?page=999`), чужие комментарии его оттуда не вытесняют.
+ * стенде: он последний на последней странице вкладки (`?page=999`). Тест опирается на глобальный порядок таблицы,
+ * поэтому он в ярусе `exclusive`: вставка другим тестом в то же время сдвинула бы строку на другую страницу.
  */
-#[Group('parallel')]
+#[Group('exclusive')]
 final class MarkupEscapingCest
 {
-    /** Необработанные теги из провайдера: если они в строке или в форме, разметка исполнилась бы. */
-    private const string RAW_TAGS = '%1$s script, %1$s img, %1$s svg';
+    /** Селектор необработанных тегов из провайдера внутри `%1$s`: если они в строке или в форме, разметка исполнилась бы. */
+    private const string RAW_TAG_SELECTOR = '%1$s script, %1$s img, %1$s svg';
 
     /**
      * REG-A-34: разметка в имени и тексте активного комментария на «Активных» показана текстом
@@ -43,7 +44,7 @@ final class MarkupEscapingCest
             ['author' => $I->grabTextFrom($row . ' [data-field="author"]'), 'text' => $I->grabTextFrom($row . ' [data-field="text"]')],
         );
         $I->dontSeeInSource($markup);
-        $I->dontSeeElement(sprintf(self::RAW_TAGS, $row));
+        $I->dontSeeElement(sprintf(self::RAW_TAG_SELECTOR, $row));
     }
 
     /**
@@ -73,7 +74,7 @@ final class MarkupEscapingCest
             ['author' => $I->grabTextFrom($row . ' [data-field="author"]'), 'text' => $I->grabTextFrom($row . ' [data-field="text"]')],
         );
         $I->dontSeeInSource($markup);
-        $I->dontSeeElement(sprintf(self::RAW_TAGS, $row));
+        $I->dontSeeElement(sprintf(self::RAW_TAG_SELECTOR, $row));
     }
 
     /**
@@ -96,7 +97,7 @@ final class MarkupEscapingCest
             ['author' => $I->grabValueFrom('#comment-author'), 'text' => $I->grabValueFrom('textarea[name="text"]')],
         );
         $I->dontSeeInSource($markup);
-        $I->dontSeeElement(sprintf(self::RAW_TAGS, 'main'));
+        $I->dontSeeElement(sprintf(self::RAW_TAG_SELECTOR, 'main'));
     }
 
     /**

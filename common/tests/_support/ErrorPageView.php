@@ -13,9 +13,6 @@ use Symfony\Component\DomCrawler\Crawler;
  */
 final class ErrorPageView
 {
-    /** Строки стандартного шаблона ошибки Yii (`yii2/views/errorHandler/error.php`): своего вида ошибки они не касаются. */
-    public const array YII_TEMPLATE_LINES = ['The above error occurred', 'Please contact us'];
-
     /**
      * @return array{title: string, text: string, links: array<string, string>} ссылки: текст → адрес
      */

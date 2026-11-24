@@ -18,7 +18,6 @@ use common\services\UpdateResult;
 use Override;
 use Yii;
 use yii\base\Module;
-use yii\filters\ContentNegotiator;
 use yii\filters\VerbFilter;
 use yii\web\BadRequestHttpException;
 use yii\web\ConflictHttpException;
@@ -50,12 +49,6 @@ final class CommentController extends Controller
     public function behaviors(): array
     {
         return [
-            // Первым: ошибки доступа, метода и CSRF на JSON-списке отдаются JSON, а не HTML-видом ошибки (REG-A-61b).
-            'json' => [
-                'class' => ContentNegotiator::class,
-                'only' => ['list'],
-                'formats' => ['application/json' => Response::FORMAT_JSON],
-            ],
             'access' => AdminAccessControl::class,
             'verbs' => [
                 'class' => VerbFilter::class,
@@ -73,11 +66,11 @@ final class CommentController extends Controller
      * `$page` без типа: `?page[]=1` приходит массивом, и типизированный параметр дал бы 400 вместо первой страницы,
      * как в ленте гостя (REG-A-30a).
      *
-     * @throws BadRequestHttpException неизвестная вкладка
+     * @throws BadRequestHttpException неизвестная вкладка: страница ошибки показывает общий текст 400, своего нет
      */
     public function actionIndex(string $status = 'active', mixed $page = '1'): string
     {
-        $tab = CommentStatus::tryFrom($status) ?? throw new BadRequestHttpException(Yii::t('app', 'admin.unknown_tab'));
+        $tab = CommentStatus::tryFrom($status) ?? throw new BadRequestHttpException();
 
         return $this->render('index', [
             'status' => $tab,

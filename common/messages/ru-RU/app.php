@@ -35,7 +35,6 @@ return [
     'ws.status.online' => 'Онлайн',
     'ws.status.reconnecting' => 'Переподключение…',
     'ws.status.offline' => 'Отключено',
-    'admin.unknown_tab' => 'Неизвестная вкладка.',
     'cli.admin.created' => 'Админ {username} создан.',
     'cli.admin.username_invalid' => 'Логин: от 3 до 64 символов, только латиница, цифры, «_», «.» и «-».',
     'cli.admin.username_taken' => 'Логин {username} уже занят.',

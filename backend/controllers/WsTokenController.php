@@ -10,7 +10,6 @@ use common\security\WsTokenService;
 use Override;
 use Yii;
 use yii\base\Module;
-use yii\filters\ContentNegotiator;
 use yii\filters\VerbFilter;
 use yii\web\Controller;
 use yii\web\Response;
@@ -37,8 +36,6 @@ final class WsTokenController extends Controller
     public function behaviors(): array
     {
         return [
-            // Первым: ошибки доступа, метода и CSRF отдаются JSON, а не HTML-видом ошибки (REG-A-61b).
-            'json' => ['class' => ContentNegotiator::class, 'formats' => ['application/json' => Response::FORMAT_JSON]],
             'access' => AdminAccessControl::class,
             'verbs' => ['class' => VerbFilter::class, 'actions' => ['create' => ['POST']]],
         ];
@@ -54,6 +51,9 @@ final class WsTokenController extends Controller
 
             return $this->asJson(['error' => 'unavailable']);
         }
+
+        // Токен одноразовый и короткоживущий: ни браузер, ни прокси не должны его хранить (REG-A-60b).
+        $this->response->headers->set('Cache-Control', 'no-store');
 
         return $this->asJson(['token' => $token]);
     }

@@ -7,7 +7,10 @@ const ABNORMAL_CLOSURE = 1006;
 
 /** Управление перехваченным WS страницы админки (E2E-08). */
 export interface WsBreak {
-  /** Рвёт текущее соединение со стороны страницы кодом 1006. Серверная половина закрывается обычным кадром. */
+  /**
+   * Рвёт единственное открытое соединение со стороны страницы кодом 1006. Серверная половина закрывается обычным
+   * кадром. Если соединений не одно, падает: рвать случайное соединение тест не должен.
+   */
   breakConnection: () => Promise<void>;
   /** Отпускает удержанные переподключения: они уходят к серверу, кадры снова идут как есть. */
   releaseReconnect: () => void;
@@ -39,9 +42,14 @@ export async function interceptAdminWs(page: Page): Promise<WsBreak> {
 
   return {
     breakConnection: async (): Promise<void> => {
-      const current = connections.at(-1);
+      const [current, ...others] = connections;
       if (current === undefined) {
         throw new Error("Страница ещё не открыла WS: перехват ставится до открытия админки");
+      }
+      if (others.length > 0) {
+        throw new Error(
+          `Ожидалось одно соединение WS, открыто ${String(connections.length)}: разрыв идёт после «Онлайн»`,
+        );
       }
       await current.close({ code: ABNORMAL_CLOSURE, reason: "E2E-08: разрыв" });
     },

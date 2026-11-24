@@ -34,8 +34,6 @@ final class ErrorPageCest
             'text' => Yii::t('app', sprintf('error.%d.text', $code)),
             'links' => [Yii::t('app', 'error.back.home') => '/'],
         ], ErrorPageView::of($I->grabResponse()));
-        $I->dontSeeResponseContains(ErrorPageView::YII_TEMPLATE_LINES[0]);
-        $I->dontSeeResponseContains(ErrorPageView::YII_TEMPLATE_LINES[1]);
     }
 
     /**

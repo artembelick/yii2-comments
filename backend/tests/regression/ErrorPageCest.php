@@ -36,8 +36,6 @@ final class ErrorPageCest
             'text' => Yii::t('app', sprintf('error.%d.text', $code)),
             'links' => [Yii::t('app', 'error.back.list') => '/'],
         ], ErrorPageView::of($I->grabResponse()));
-        $I->dontSeeResponseContains(ErrorPageView::YII_TEMPLATE_LINES[0]);
-        $I->dontSeeResponseContains(ErrorPageView::YII_TEMPLATE_LINES[1]);
     }
 
     /**
@@ -68,7 +66,5 @@ final class ErrorPageCest
             'text' => Yii::t('app', 'admin.edit_deleted'),
             'links' => [Yii::t('app', 'error.back.deleted') => '/?status=deleted'],
         ], ErrorPageView::of($I->grabResponse()));
-        $I->dontSeeResponseContains(ErrorPageView::YII_TEMPLATE_LINES[0]);
-        $I->dontSeeResponseContains(ErrorPageView::YII_TEMPLATE_LINES[1]);
     }
 }

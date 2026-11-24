@@ -36,7 +36,7 @@ final class AdminAccessControl extends AccessControl
     #[Override]
     protected function denyAccess($user): void
     {
-        if ($user instanceof User && $user->getIsGuest() && str_starts_with(Yii::$app->request->getPathInfo(), 'api/')) {
+        if ($user instanceof User && $user->getIsGuest() && ApiRoute::isCurrent()) {
             $response = Yii::$app->response;
             $response->format = Response::FORMAT_JSON;
             $response->statusCode = 401;

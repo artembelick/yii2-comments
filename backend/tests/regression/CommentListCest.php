@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace backend\tests\regression;
 
+use backend\controllers\CommentController;
 use backend\tests\RegressionTester;
 use Codeception\Attribute\DataProvider;
 use Codeception\Attribute\Group;
 use Codeception\Example;
+use common\models\Comment;
 use common\tests\_support\Examples;
 use Yii;
 use yii\db\Expression;
@@ -69,9 +71,8 @@ final class CommentListCest
 
         $I->sendGet('/api/comments?' . Examples::string($example, 'query'));
 
-        $I->seeResponseCodeIs(200);
-
         $texts = $I->grabDataFromResponseByJsonPath('$.items[*].text');
+        $I->seeResponseCodeIs(200);
         $I->assertSame(array_slice($newestFirst, Examples::int($example, 'offset'), 1), array_slice($texts, 0, 1));
         $I->assertCount(20, $texts);
         $I->assertSame([Examples::int($example, 'page')], $I->grabDataFromResponseByJsonPath('$.page'));
@@ -97,12 +98,13 @@ final class CommentListCest
     public function listPageBeyondRangeShowsLastPage(RegressionTester $I): void
     {
         $I->haveComments(21);
+        $lastPage = (int) ceil((int) Comment::find()->where(['deleted_at' => null])->count() / CommentController::PER_PAGE);
         $I->amSignedInAs($I->haveAdmin());
 
         $texts = $I->grabTextsOfPage('/?page=999');
 
         $I->assertNotSame([], $texts);
-        $I->assertSame($I->grabTextFrom('.pagination li:nth-last-child(2)'), $I->grabTextFrom('.pagination li.active'));
+        $I->assertSame((string) $lastPage, $I->grabAttributeFrom('[data-ws-url]', 'data-page'));
     }
 
     /** REG-A-30a: ?page=999 у /api/comments → последняя страница со строками, 200 */

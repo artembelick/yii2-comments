@@ -489,11 +489,18 @@ public function changePassword(string $username, string $password): void
 
 | ID | Поведение |
 |---|---|
-| UNIT-WTC-01 | `create` вызывает `WsTokenService::issue(id админа, id сессии, auth_key админа)` и возвращает JSON `{token}` |
+| UNIT-WTC-01 | `create` вызывает `WsTokenService::issue(id админа, id сессии, auth_key админа)` и возвращает JSON `{token}` с заголовком `Cache-Control: no-store` (REG-A-60b) |
 | UNIT-WTC-02 | Ошибка Redis → 503 и JSON `{error: "unavailable"}` |
 | UNIT-WTC-03 | `behaviors()`: только вошедшие и только POST |
 
-JSON-эндпоинты (`list` и `ws-token/create`) ставят формат ответа JSON фильтром `ContentNegotiator` раньше доступа, VerbFilter и CSRF: ошибки фреймворка на них отдаются JSON, а не HTML-видом ошибки. Это конфигурация фильтра фреймворка, её проверяет REG-A-61b.
+### `backend\components\ApiErrorHandler`
+
+Обработчик ошибок админки. Ошибку на адресе под `/api/` он отдаёт JSON единой формы `{error: <код>}` (REG-A-61b), какой бы формат ни стоял у ответа, в том числе ошибки фреймворка (CSRF, метод, неизвестный маршрут). Остальные адреса получают HTML-вид `site/error`.
+
+| ID | Поведение |
+|---|---|
+| UNIT-AEH-01 | Провайдер исключений → тело `{error: <код>}`: 400 без CSRF (сообщение фреймворка о CSRF) → `csrf`; прочие 400 → `bad_request`; 401 → `unauthorized`; 403 → `forbidden`; 404 → `not_found`; 405 → `method_not_allowed`; 503 → `unavailable`; 500 → `internal_error`; код вне таблицы — код своего класса: 422 → `bad_request`, 502 → `internal_error`; не `HttpException` → `internal_error`, сообщение исключения в тело не попадает |
+| UNIT-AEH-02 | Ошибка на адресе `/api/…` при формате ответа HTML → формат JSON, код ответа исключения, тело из AEH-01; ошибка на HTML-адресе → вид `site/error` |
 
 ### `common\web\ErrorPage`
 
