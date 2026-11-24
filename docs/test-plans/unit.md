@@ -19,18 +19,6 @@
 
 ---
 
-## 0. Каркас (временный раздел)
-
-Каркас (тикет 01) отвечает 200 на корне обеих частей через одну заглушку. Срезы 02 и 03 заменяют её настоящими маршрутами и удаляют этот раздел вместе с тестом.
-
-### `common\web\PlaceholderController`
-
-| ID | Поведение |
-|---|---|
-| UNIT-SKEL-01 | `index` отдаёт текст «Каркас работает» |
-
----
-
 ## 1. Правила текста
 
 ### `common\text\CommentTextNormalizer`
@@ -50,7 +38,7 @@ public function normalizeText(string $value): string
 
 ### `common\validators\PlainTextValidator`
 
-Yii-валидатор с параметрами `min`, `max`, `multiline`, `messagePrefix` (`name` или `text`).
+Yii-валидатор с параметрами `min`, `max`, `multiline`, `messagePrefix` (`name` или `text`). Получает уже нормализованное значение: нормализует форма перед валидацией. Пустое значение не пропускает (`skipOnEmpty = false`), обязательность проверяет сам.
 
 | ID | Поведение |
 |---|---|
@@ -62,12 +50,14 @@ Yii-валидатор с параметрами `min`, `max`, `multiline`, `mes
 | UNIT-VAL-06 | ZWJ, ZWNJ и VS16 разрешены. Эмодзи «семья» проходит и считается как 5 символов |
 | UNIT-VAL-07 | Невалидный UTF-8 → `invalid_chars` |
 | UNIT-VAL-08 | Провайдер: массив, число, `null` → `field.invalid` |
-| UNIT-VAL-09 | Ошибка на поле одна, по порядку: тип → недопустимые символы → многострочность → длина |
+| UNIT-VAL-09 | Ошибка на поле одна, по порядку: тип → обязательность (пустая строка → `required`) → недопустимые символы → многострочность → длина |
+| UNIT-VAL-10 | Провайдер конфигурации без `min` или без `max` → `InvalidConfigException`: умолчания длины нет |
 
 ### `common\forms\CommentForm`
 
 ```php
-public string $name; public string $text;
+public mixed $name; public mixed $text; // поле может прийти массивом или не прийти: тип проверяет валидатор
+public function formName(): string        // '' — поля без обёртки: name, text
 public function getNormalizedName(): string
 public function getNormalizedText(): string
 ```
@@ -79,6 +69,7 @@ public function getNormalizedText(): string
 | UNIT-CF-03 | Пустые после нормализации поля → `name.required` и `text.required` |
 | UNIT-CF-04 | Safe-атрибуты только `name` и `text`. Остальные ключи из `load()` игнорируются |
 | UNIT-CF-05 | Поле пришло массивом → `field.invalid`, без исключения |
+| UNIT-CF-06 | Подписи полей — `form.name` и `form.text` из каталога: по ним гость и тесты находят поля |
 
 ### `common\forms\CommentTextForm`
 
@@ -171,7 +162,7 @@ public function page(CommentStatus $status, int $page, int $perPage): CommentPag
 
 | ID | Поведение (на тестовой Postgres) |
 |---|---|
-| UNIT-REPO-01 | `create` сохраняет автора, текст и `created_at`. Поля `updated_*` и `deleted_*` пустые |
+| UNIT-REPO-01 | `create` сохраняет автора, текст и `created_at` с микросекундами (иначе комментарий встаёт ниже соседей той же секунды). Поля `updated_*` и `deleted_*` пустые |
 | UNIT-REPO-02 | `findById` для несуществующего id возвращает null |
 | UNIT-REPO-03 | `updateText` для активного комментария меняет текст, `updated_at`, `updated_by` и возвращает true. Для удалённого ничего не меняет и возвращает false |
 | UNIT-REPO-04 | `markDeleted` работает как условный UPDATE: первый вызов → true, второй (другим админом) → false, а `deleted_by` остаётся за первым |
@@ -420,10 +411,12 @@ public function changePassword(string $username, string $password): void
 
 ### `frontend\controllers\CommentController`
 
+`CommentService` — final readonly, поэтому в тестах контроллера он настоящий, а мокаются его границы: репозиторий и часы. Лимит отправок (`RateLimiterInterface`) — граница самого контроллера, он тоже мок. «Сервис не вызывается» проверяется как «репозиторий не получил `create`».
+
 | ID | Поведение |
 |---|---|
 | UNIT-FC-01 | `index` запрашивает у репозитория `page(Active, ?page, 20)` и отдаёт во view страницу и пустую `CommentForm` |
-| UNIT-FC-02 | `create`: сначала `RateLimiter::hit`, потом валидация. Это значит, что любой POST тратит лимит |
+| UNIT-FC-02 | `create`: сначала `RateLimiter::hit`, потом валидация. Это значит, что любой POST тратит лимит: невалидный POST при исчерпанном лимите получает 429, а не 422 |
 | UNIT-FC-03 | `create` валидный → `CommentService::create`, флэш `comment.created`, редирект 302 на `/` |
 | UNIT-FC-04 | `create` невалидный → 422, view ленты с формой, ошибками и введёнными значениями, сервис не вызывается |
 | UNIT-FC-05 | Лимит исчерпан → 429, view с сообщением `comment.rate_limited` и введёнными значениями, сервис не вызывается |

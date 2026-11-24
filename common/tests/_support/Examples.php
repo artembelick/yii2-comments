@@ -21,4 +21,16 @@ final class Examples
 
         return is_string($value) ? $value : throw new UnexpectedValueException(sprintf('В наборе провайдера %s — не строка', $key));
     }
+
+    /**
+     * @param Example<string, mixed> $example
+     *
+     * @return array<mixed>
+     */
+    public static function array(Example $example, string $key): array
+    {
+        $value = $example[$key];
+
+        return is_array($value) ? $value : throw new UnexpectedValueException(sprintf('В наборе провайдера %s — не массив', $key));
+    }
 }

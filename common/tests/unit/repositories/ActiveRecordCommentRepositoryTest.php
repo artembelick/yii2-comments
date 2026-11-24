@@ -11,11 +11,47 @@ use common\repositories\ActiveRecordCommentRepository;
 use common\repositories\CommentPage;
 use common\repositories\CommentStatus;
 use common\tests\UnitTester;
+use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\TestDox;
 
 final class ActiveRecordCommentRepositoryTest extends Unit
 {
     protected UnitTester $tester;
+
+    #[TestDox('UNIT-REPO-01: create сохраняет автора, текст и created_at с микросекундами, поля правки и удаления пустые')]
+    public function testCreateStoresNewActiveComment(): void
+    {
+        $repository = new ActiveRecordCommentRepository();
+
+        $created = $repository->create('Ян', "первая\nвторая", new DateTimeImmutable('2026-11-24 10:15:30.123456+00:00'));
+
+        $stored = Comment::findOne($created->id);
+        self::assertInstanceOf(Comment::class, $stored);
+        self::assertSame(
+            [
+                'author' => 'Ян',
+                'text' => "первая\nвторая",
+                'created_at' => '2026-11-24 10:15:30.123456+00',
+                'updated_at' => null,
+                'updated_by' => null,
+                'deleted_at' => null,
+                'deleted_by' => null,
+            ],
+            $stored->getAttributes(['author', 'text', 'created_at', 'updated_at', 'updated_by', 'deleted_at', 'deleted_by']),
+        );
+    }
+
+    #[TestDox('UNIT-REPO-02: findById для несуществующего id возвращает null')]
+    public function testFindByIdReturnsNullForUnknownId(): void
+    {
+        $existing = $this->tester->haveComment();
+        $unknownId = $existing->id + 1_000_000;
+        $repository = new ActiveRecordCommentRepository();
+
+        $found = $repository->findById($unknownId);
+
+        self::assertNull($found);
+    }
 
     #[TestDox('UNIT-REPO-06: page фильтрует по статусу, сортирует новые сверху и отдаёт perPage записей')]
     public function testPageFiltersSortsAndLimits(): void

@@ -46,7 +46,8 @@ final class TestSeed
         if ($test instanceof Cest) {
             $example = $test->getMetadata()->getCurrent('example');
 
-            return $example === null ? '' : ' ' . json_encode($example, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+            // Невалидный UTF-8 в наборе (REG-G-18) заменяется на U+FFFD, а не роняет тест.
+            return $example === null ? '' : ' ' . json_encode($example, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         }
 
         if ($test instanceof TestCaseWrapper) {

@@ -3,3 +3,10 @@ actor: UnitTester
 modules:
   enabled:
     - Asserts
+    # Приложение публичной части на каждый тест, без БД: сервис, репозиторий и RateLimiter — моки через DI-контейнер.
+    - Yii2:
+        configFile: config/test.php
+        part: [orm]
+        transaction: false
+        cleanup: false
+    - common\tests\_support\ContainerReset
