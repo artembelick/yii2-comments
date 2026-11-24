@@ -258,12 +258,56 @@ final class SubmitCest
     }
 
     /**
-     * REG-G-18: перенос в имени, управляющие символы и невалидный UTF-8 → 422, а не 500
+     * REG-G-18: управляющие символы, bidi и битые байты вырезаются, табуляция и перенос в имени → пробел, 302 и в ленте очищенное
      *
      * @param Example<string, mixed> $example
      */
-    #[DataProvider('invalidCharacters')]
-    public function invalidCharactersAreRejected(RegressionTester $I, Example $example): void
+    #[DataProvider('charactersToClean')]
+    public function invisibleCharactersAreCleaned(RegressionTester $I, Example $example): void
+    {
+        $tag = $I->fixtureFactory()->tag();
+        $field = Examples::string($example, 'field');
+        $fields = ['name' => 'Ян ' . $tag, 'text' => 'Текст ' . $tag];
+
+        $I->postComment([...$fields, $field => Examples::string($example, 'value')]);
+
+        $I->seeResponseCodeIs(302);
+        $I->assertSame(
+            [['author' => $fields['name'], 'text' => $fields['text'], Examples::string($example, 'shownAs') => Examples::string($example, 'cleaned')]],
+            array_slice($I->grabFeedComments('/'), 0, 1),
+        );
+    }
+
+    /**
+     * shownAs — где поле видно в ленте: имя показывается как автор.
+     *
+     * @return array<string, array{field: string, shownAs: string, value: string, cleaned: string}>
+     */
+    private function charactersToClean(): array
+    {
+        return [
+            'перенос в имени' => ['field' => 'name', 'shownAs' => 'author', 'value' => "Ян\nМария", 'cleaned' => 'Ян Мария'],
+            '\r\n в имени' => ['field' => 'name', 'shownAs' => 'author', 'value' => "Ян\r\nМария", 'cleaned' => 'Ян Мария'],
+            '\0 в имени' => ['field' => 'name', 'shownAs' => 'author', 'value' => "Ян\0", 'cleaned' => 'Ян'],
+            '\x07 в имени' => ['field' => 'name', 'shownAs' => 'author', 'value' => "Ян\x07Мария", 'cleaned' => 'ЯнМария'],
+            '\t в имени' => ['field' => 'name', 'shownAs' => 'author', 'value' => "Ян\t\tМария", 'cleaned' => 'Ян  Мария'],
+            'bidi в имени' => ['field' => 'name', 'shownAs' => 'author', 'value' => "Ян\u{202E}Мария", 'cleaned' => 'ЯнМария'],
+            'невалидный UTF-8 в имени' => ['field' => 'name', 'shownAs' => 'author', 'value' => "Ян\xFFМария", 'cleaned' => 'ЯнМария'],
+            '\0 в тексте' => ['field' => 'text', 'shownAs' => 'text', 'value' => "Текст\0", 'cleaned' => 'Текст'],
+            '\x07 в тексте' => ['field' => 'text', 'shownAs' => 'text', 'value' => "Текст\x07ещё", 'cleaned' => 'Текстещё'],
+            '\t в тексте' => ['field' => 'text', 'shownAs' => 'text', 'value' => "Текст\tещё", 'cleaned' => 'Текст ещё'],
+            'bidi в тексте' => ['field' => 'text', 'shownAs' => 'text', 'value' => "Текст\u{2066}ещё\u{2069}", 'cleaned' => 'Текстещё'],
+            'невалидный UTF-8 в тексте' => ['field' => 'text', 'shownAs' => 'text', 'value' => "Текст\xC3ещё", 'cleaned' => 'Текстещё'],
+        ];
+    }
+
+    /**
+     * REG-G-18a: имя или текст только из вырезаемых символов → 422 и ошибка обязательности
+     *
+     * @param Example<string, mixed> $example
+     */
+    #[DataProvider('onlyCleanedCharacters')]
+    public function fieldOfCleanedCharactersOnlyIsRequired(RegressionTester $I, Example $example): void
     {
         $tag = $I->fixtureFactory()->tag();
         $field = Examples::string($example, 'field');
@@ -273,23 +317,19 @@ final class SubmitCest
 
         $I->seeResponseCodeIs(422);
         $I->seeFieldError(Examples::string($example, 'error'));
+        $I->dontSeeRecord(Comment::class, ['author' => 'Ян ' . $tag]);
+        $I->dontSeeRecord(Comment::class, ['text' => 'Текст ' . $tag]);
     }
 
     /**
      * @return array<string, array{field: string, value: string, error: string}>
      */
-    private function invalidCharacters(): array
+    private function onlyCleanedCharacters(): array
     {
         return [
-            'перенос в имени' => ['field' => 'name', 'value' => "Ян\nМария", 'error' => 'name.multiline'],
-            '\0 в имени' => ['field' => 'name', 'value' => "Ян\0", 'error' => 'name.invalid_chars'],
-            '\x07 в имени' => ['field' => 'name', 'value' => "Ян\x07", 'error' => 'name.invalid_chars'],
-            '\t в имени' => ['field' => 'name', 'value' => "Ян\tМария", 'error' => 'name.invalid_chars'],
-            '\0 в тексте' => ['field' => 'text', 'value' => "Текст\0", 'error' => 'text.invalid_chars'],
-            '\x07 в тексте' => ['field' => 'text', 'value' => "Текст\x07", 'error' => 'text.invalid_chars'],
-            '\t в тексте' => ['field' => 'text', 'value' => "Текст\tещё", 'error' => 'text.invalid_chars'],
-            'невалидный UTF-8 в имени' => ['field' => 'name', 'value' => "Ян\xC3\x28", 'error' => 'name.invalid_chars'],
-            'невалидный UTF-8 в тексте' => ['field' => 'text', 'value' => "Текст\xC3\x28", 'error' => 'text.invalid_chars'],
+            'имя из управляющих, bidi и битых байтов' => ['field' => 'name', 'value' => "\0\x07\u{202E}\xFF", 'error' => 'name.required'],
+            'имя из табуляций и переносов' => ['field' => 'name', 'value' => "\t\r\n\t", 'error' => 'name.required'],
+            'текст из управляющих, bidi и битых байтов' => ['field' => 'text', 'value' => "\0\x07\u{2066}\xC3", 'error' => 'text.required'],
         ];
     }
 

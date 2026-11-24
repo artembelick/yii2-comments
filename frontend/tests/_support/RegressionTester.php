@@ -161,6 +161,26 @@ final class RegressionTester extends Actor
         return array_values($this->grabMultiple('section[aria-labelledby="feed-title"] li .comment-text'));
     }
 
+    /**
+     * Открывает ленту и возвращает имена и тексты комментариев сверху вниз, как они видны в HTML, без
+     * схлопывания пробелов. Crawler остаётся на этой странице, как в grabFeedTexts.
+     *
+     * @return list<array{author: string, text: string}>
+     */
+    public function grabFeedComments(string $url): array
+    {
+        $this->amOnPage($url);
+        $this->seeResponseCodeIs(200);
+        $item = 'section[aria-labelledby="feed-title"] li ';
+
+        /** @var list<string> $authors */
+        $authors = $this->grabMultiple($item . '.comment-author');
+        /** @var list<string> $texts */
+        $texts = $this->grabMultiple($item . '.comment-text');
+
+        return array_map(static fn(string $author, string $text): array => ['author' => $author, 'text' => $text], $authors, $texts);
+    }
+
     private function standUrl(string $variable, string $path): string
     {
         $base = getenv($variable);

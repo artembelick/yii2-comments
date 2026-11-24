@@ -25,17 +25,18 @@ final class CommentTextFormTest extends Unit
     }
 
     /**
-     * Наборы для поля text из провайдера UNIT-CF-02 и пустой текст и массив, как в UNIT-CF-03 и UNIT-CF-05.
+     * Наборы для поля text из провайдеров UNIT-CF-02 и UNIT-CF-03 и массив, как в UNIT-CF-05.
      *
      * @return array<string, array{mixed, string}>
      */
     public static function invalidTexts(): array
     {
-        $commentFormCases = array_filter(CommentFormTest::invalidFields(), static fn(array $case): bool => $case[0] === 'text');
+        $invalidCases = array_filter(CommentFormTest::invalidFields(), static fn(array $case): bool => $case[0] === 'text');
+        $blankCases = array_map(static fn(array $case): array => [$case[1], 'text.required'], CommentFormTest::blankFields());
 
         return [
-            ...array_map(static fn(array $case): array => [$case[1], $case[2]], $commentFormCases),
-            'пустой после нормализации → text.required' => ["\r\n \n", 'text.required'],
+            ...array_map(static fn(array $case): array => [$case[1], $case[2]], $invalidCases),
+            ...array_combine(array_map(static fn(string $name): string => $name . ' → text.required', array_keys($blankCases)), $blankCases),
             'массив → field.invalid' => [['текст'], 'field.invalid'],
         ];
     }
@@ -70,6 +71,7 @@ final class CommentTextFormTest extends Unit
             'тот же текст → true' => ["первая\nвторая", true],
             'пробелы по краям → true' => ["  первая\nвторая \n", true],
             '\r\n вместо \n → true' => ["первая\r\nвторая", true],
+            'вырезаемые символы → true' => ["\0первая\u{202E}\nвторая\xFF", true],
             'другой текст → false' => ["первая\nтретья", false],
         ];
     }
