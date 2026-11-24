@@ -115,3 +115,13 @@ export async function comment(db: Pool, faker: Faker, overrides: { createdAt?: s
 
   return { id: Number(row["id"]), author: String(row["author"]), text: String(row["text"]) };
 }
+
+/** Несколько комментариев-предусловий: вставляются по одному, каждый следующий новее предыдущего. */
+export async function comments(db: Pool, faker: Faker, count: number): Promise<Comment[]> {
+  if (count === 0) {
+    return [];
+  }
+  const older = await comments(db, faker, count - 1);
+
+  return [...older, await comment(db, faker)];
+}

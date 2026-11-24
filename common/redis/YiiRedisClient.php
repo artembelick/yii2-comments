@@ -55,6 +55,12 @@ final readonly class YiiRedisClient implements RedisClientInterface
         return is_string($value) ? $value : null;
     }
 
+    #[Override]
+    public function publish(string $channel, string $message): void
+    {
+        $this->execute('PUBLISH', [$channel, $message]);
+    }
+
     /**
      * @param list<int|string> $params
      */

@@ -156,9 +156,8 @@ test-regression-exclusive:
 test-regression-ws-parallel:
 	$(PLAYWRIGHT) --project=regression-ws-parallel $(PLAYWRIGHT_SHARD)
 
-# Единственное оставшееся послабление: ярус exclusive у REG-WS (WS-06, WS-07) заполняет срез 05, он же убирает флаг.
 test-regression-ws-exclusive:
-	$(PLAYWRIGHT) --project=regression-ws-exclusive --pass-with-no-tests
+	$(PLAYWRIGHT) --project=regression-ws-exclusive
 
 test-e2e: test-e2e-parallel test-e2e-exclusive ## E2E (Playwright): сначала parallel, затем exclusive
 

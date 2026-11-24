@@ -68,6 +68,7 @@ final class YiiRedisClientTest extends Unit
             'expire → EXPIRE' => [static fn(YiiRedisClient $redis) => $redis->expire('k', 60), 'EXPIRE', ['k', 60]],
             'setNxEx → SET NX EX' => [static fn(YiiRedisClient $redis) => $redis->setNxEx('k', 'v', 60), 'SET', ['k', 'v', 'NX', 'EX', 60]],
             'del → DEL' => [static fn(YiiRedisClient $redis) => $redis->del('k'), 'DEL', ['k']],
+            'publish → PUBLISH' => [static fn(YiiRedisClient $redis) => $redis->publish('channel', '{}'), 'PUBLISH', ['channel', '{}']],
         ];
     }
 

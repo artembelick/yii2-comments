@@ -246,7 +246,7 @@ public function restore(int $id, User $admin): bool  // false — уже акт�
 | ID | Поведение (репозиторий, публикатор, часы и логгер — моки) |
 |---|---|
 | UNIT-SVC-01 | `create` передаёт в репозиторий нормализованные имя и текст и время из часов, затем публикует `comment.created` с сериализованным комментарием |
-| UNIT-SVC-02 | `create`: если публикация упала, комментарий всё равно возвращается, ошибка пишется в лог с id комментария |
+| UNIT-SVC-02 | `create`: если публикация упала (`EventPublishException`), комментарий всё равно возвращается, ошибка пишется в лог с id комментария |
 | UNIT-SVC-03 | `updateText` для несуществующего → `CommentNotFoundException`, для удалённого → `CommentIsDeletedException` |
 | UNIT-SVC-04 | `updateText`: если `isSameAs` вернул true → `Unchanged`, репозиторий не вызывается, событий нет |
 | UNIT-SVC-05 | `updateText` с новым текстом → `updateText` репозитория, событие `comment.updated` с `updatedBy` → `Updated` |
@@ -287,11 +287,11 @@ public function reset(string $key): void
 
 ### `common\redis\RedisClientInterface` и `YiiRedisClient`
 
-Адаптер над `yiisoft/yii2-redis`: код зависит от интерфейса, unit-тесты мокают его, а не компонент. Набор команд растёт вместе с потребителями (INCR, EXPIRE, GET, DEL — для лимита; SET NX EX и GETDEL — для токена WS).
+Адаптер над `yiisoft/yii2-redis`: код зависит от интерфейса, unit-тесты мокают его, а не компонент. Набор команд растёт вместе с потребителями (INCR, EXPIRE, GET, DEL — для лимита; SET NX EX и GETDEL — для токена WS; PUBLISH — для событий).
 
 | ID | Поведение (мок `yii\redis\Connection`) |
 |---|---|
-| UNIT-RDS-01 | Провайдер методов: каждый отправляет свою команду с аргументами и приводит ответ к типу интерфейса (`incr` → int, `get` → строка или null) |
+| UNIT-RDS-01 | Провайдер методов: каждый отправляет свою команду с аргументами и приводит ответ к типу интерфейса (`incr` → int, `get` → строка или null, `publish` → PUBLISH) |
 | UNIT-RDS-02 | Ошибка соединения `yii\db\Exception` → `RedisUnavailableException` |
 
 ### `backend\forms\LoginForm`
@@ -563,8 +563,24 @@ public function dispatch(string $channel, string $payload): void
 | UNIT-DSP-01 | `comments.events` → сообщение уходит как есть всем авторизованным соединениям и не уходит неавторизованным |
 | UNIT-DSP-02 | `ws.control` `session.ended` → `close(4403)` всем соединениям этой сессии; остальные не тронуты |
 | UNIT-DSP-03 | `ws.control` `access.revoked` → `close(4403)` всем соединениям админа |
-| UNIT-DSP-04 | Провайдер: битый JSON, неизвестный канал, неизвестный `type` → ничего не отправлено, запись в лог |
-| UNIT-DSP-05 | Если одно соединение упало на `send`, рассылка остальным продолжается, а упавшее закрывается |
+| UNIT-DSP-04 | Провайдер: битый JSON, JSON не объект, неизвестный канал, неизвестный `type`, нет `type` → ничего не отправлено, предупреждение в логе |
+| UNIT-DSP-05 | Если одно соединение упало на `send`, рассылка остальным продолжается, а упавшее закрывается с 1011 |
+
+Подписку на Redis держит `ws/runtime/RedisSubscriber` (workerman/redis). Со срезом 05 процесс подписан только на `comments.events`, `ws.control` добавляет срез 07 (DSP-02, DSP-03).
+
+### `ws\RedisSubscriberSettings`
+
+```php
+public static function of(yii\redis\Connection $redis): self // → address, options, auth для workerman/redis
+```
+
+Подписчик берёт настройки у того же компонента `redis`, что и публикация: иначе пароль или TLS, заданные только компоненту, молча оставили бы WS-сервер без событий. Номер базы не нужен: каналы pub/sub общие для всех баз.
+
+| ID | Поведение |
+|---|---|
+| UNIT-SUB-01 | Адрес: `redis://host:port`; если задан `unixSocket` — `unix://путь` |
+| UNIT-SUB-02 | Опции: `connect_timeout` из `connectionTimeout`, `ssl` из `useSSL`, `context` из `contextOptions` |
+| UNIT-SUB-03 | Провайдер: нет пароля → AUTH не нужен; пароль → `password`; логин и пароль → `[username, password]` |
 
 ---
 
@@ -612,13 +628,13 @@ export class UnavailableError extends Error {}
 | UNIT-JS-API-01 | `fetchToken` отправляет POST `/api/ws-token` с заголовком `X-CSRF-Token` и `credentials: 'same-origin'`, возвращает `token` |
 | UNIT-JS-API-02 | `fetchList` отправляет GET `/api/comments?status=…&page=…` и возвращает разобранный JSON |
 | UNIT-JS-API-03 | Ответ 401 → `UnauthorizedError` |
-| UNIT-JS-API-04 | Провайдер: 5xx, сетевая ошибка, невалидный JSON, JSON без строкового `token` → `UnavailableError` |
+| UNIT-JS-API-04 | Провайдер: 5xx, сетевая ошибка, невалидный JSON, JSON без строкового `token` → `UnavailableError`. Для `fetchList` то же при 5xx и JSON без массива `items` |
 
 ### `format.js`
 
 ```js
 export function formatDate(iso, timeZone)   // 'dd.MM.yyyy HH:mm'
-export function formatNewBanner(n, messages) // ICU plural через Intl.PluralRules('ru')
+export function formatNewBanner(count, pattern) // pattern — ICU plural `admin.banner.new`, форма через Intl.PluralRules('ru')
 ```
 
 | ID | Поведение |
@@ -634,40 +650,57 @@ export function createRowRenderer({ template, timeZone, messages }) // → { ren
 
 | ID | Поведение |
 |---|---|
-| UNIT-JS-ROW-01 | Клонирует `<template>`, ставит `data-id` и заполняет автора, текст, дату и аудит через `textContent` |
+| UNIT-JS-ROW-01 | Клонирует `<template>`, ставит `data-id` и заполняет автора, текст, дату и аудит через `textContent`; шаблон не меняется. В шаблоне нет `<tr>` или поля → `PageMarkupError` |
 | UNIT-JS-ROW-02 | HTML в имени и тексте остаётся текстом: в строке нет элементов, которых не было в шаблоне |
-| UNIT-JS-ROW-03 | `updatedBy` → «изменил: login»; `deletedBy` → «удалил: login»; null → элемент аудита пустой и скрыт |
+| UNIT-JS-ROW-03 | `updatedBy` → «изменил: login»; `deletedBy` → «удалил: login»; null → элемент аудита пустой и скрыт. Логин с `$&` и `$'` подставляется как есть |
 | UNIT-JS-ROW-04 | Действия в строке соответствуют статусу: у активного ссылка `admin.action.edit` и форма с кнопкой `admin.action.delete`, у удалённого форма с кнопкой `admin.action.restore`. У кнопок есть `data-confirm` с текстом из каталога |
 
 ### `comment-list.js`
 
 ```js
-export function createCommentList({ tbody, view: { status, page, perPage }, renderRow, banner }) // → { apply(event): void, replaceAll(items): void }
+export function createCommentList({ table, tbody, emptyState, view: { status, page, perPage }, renderRow, banner, bannerText, timers }) // → { apply(event): void, replaceAll(items): void }
 ```
+
+Таблица есть и на пустой вкладке, скрытая (`hidden`), рядом текст пустого состояния: в неё встаёт комментарий, пришедший по WS. Подсветка — атрибут `data-highlighted="true"` на строке.
 
 | ID | Поведение |
 |---|---|
-| UNIT-JS-LIST-01 | `created` на «Активных», страница 1 → строка первой, класс подсветки снимается через 3 секунды |
+| UNIT-JS-LIST-01 | `created` на «Активных», страница 1 → строка первой и подсвечена, подсветка снимается через 3 секунды. На полной странице последняя строка уходит. На пустой вкладке таблица показывается, текст пустого состояния скрывается |
 | UNIT-JS-LIST-02 | Провайдер видов: «Активные» стр. 2, «Удалённые» стр. 1 + `created` → строка не добавлена, баннер `formatNewBanner(1)`; следующий `created` → `(2)` |
 | UNIT-JS-LIST-03 | `updated` для видимой строки → строка перерисована на месте; для невидимой → ничего |
 | UNIT-JS-LIST-04 | `deleted` на «Активных» → строка удалена, страница не дозаполняется. На «Удалённых» → строка встаёт на место по `createdAt`, если попадает в диапазон страницы |
 | UNIT-JS-LIST-05 | `restored`: зеркально к LIST-04 |
 | UNIT-JS-LIST-06 | Повторное событие с тем же состоянием (строка уже есть или её уже нет) ничего не дублирует |
-| UNIT-JS-LIST-07 | `replaceAll` перерисовывает tbody целиком и скрывает баннер |
+| UNIT-JS-LIST-07 | `replaceAll` перерисовывает tbody целиком, скрывает баннер и обнуляет его счётчик. Пустой список → таблица скрыта, текст пустого состояния показан |
 | UNIT-JS-LIST-08 | Пустая таблица после удаления последней строки → показывается текст пустого состояния вкладки |
+
+### `list-reload.js`
+
+```js
+export function createListReload({ list, fetchPage, backoff, timers, navigateToLogin }) // → { apply(event): void, reload(): void }
+```
+
+Связывает список с перечитыванием страницы после переподключения (ADR 0002). Пока ответ `/api/comments` в пути, события WS уже идут: они копятся и применяются после `replaceAll`, иначе снимок страницы их затёр бы. Тесты используют настоящий `comment-list` и мок `fetchPage`.
+
+| ID | Поведение (мок `fetchPage`, фейковые таймеры) |
+|---|---|
+| UNIT-JS-RELOAD-01 | Вне перечитывания событие сразу уходит в список. `created`, пришедший, пока ответ в пути, после ответа остаётся первой строкой |
+| UNIT-JS-RELOAD-02 | Два перечитывания подряд, ответ первого пришёл последним → на странице снимок второго. Отказ устаревшего перечитывания снимок не трогает и повтора не планирует |
+| UNIT-JS-RELOAD-03 | Отказ `UnavailableError` → накопленные события применяются, повтор через `backoff.next()`; удачный повтор → `backoff.reset()` |
+| UNIT-JS-RELOAD-04 | `UnauthorizedError` → `navigateToLogin()`, повтора нет |
 
 ### `page.js`
 
 ```js
-export function readPage(document) // → { wsUrl, loginUrl, csrfToken, indicator, statusTexts }
+export function readPage(document) // → { wsUrl, loginUrl, csrfToken, indicator, statusTexts, view, timeZone, table, tbody, emptyState, banner, bannerPattern, template, auditTexts }
 ```
 
-Настройки клиента сервер кладёт в разметку списка: адрес WS и адрес логина в data-атрибутах блока заголовка, тексты индикатора в data-атрибутах самого индикатора, CSRF-токен в meta. Чтение вынесено из `main.js`: проверка, что всё на месте, — это ветвления, а `main.js` их не допускает.
+Настройки клиента сервер кладёт в разметку списка: адрес WS, адрес логина, вид списка (вкладка, страница, строк на странице) и часовой пояс в data-атрибутах блока заголовка, тексты индикатора в data-атрибутах самого индикатора, шаблон баннера в `data-pattern` баннера, тексты аудита в data-атрибутах `<template>` строки, CSRF-токен в meta. Чтение вынесено из `main.js`: проверка, что всё на месте, — это ветвления, а `main.js` их не допускает.
 
 | ID | Поведение |
 |---|---|
-| UNIT-JS-PAGE-01 | Адрес WS, адрес логина, CSRF-токен, элемент индикатора и три текста состояний берутся из разметки |
-| UNIT-JS-PAGE-02 | Провайдер: нет блока с адресом WS, нет индикатора, нет CSRF-токена, нет адреса логина, нет текста состояния → ошибка |
+| UNIT-JS-PAGE-01 | Адрес WS, адрес логина, CSRF-токен, индикатор и его тексты, вид списка, часовой пояс, таблица, tbody, текст пустой вкладки, баннер и его шаблон, шаблон строки и тексты аудита берутся из разметки |
+| UNIT-JS-PAGE-02 | Провайдер: нет блока с адресом WS, индикатора, CSRF-токена, адреса логина, текста состояния, часового пояса, таблицы, tbody, текста пустой вкладки, баннера, шаблона строки или текста аудита → ошибка |
 
 ### `status-indicator.js`
 
@@ -681,13 +714,13 @@ export function readPage(document) // → { wsUrl, loginUrl, csrfToken, indicato
 export function createWsClient({ url, api, backoff, WebSocketImpl, timers, onEvent, onStatus, onReconnected, navigateToLogin }) // → { start(), stop() }
 ```
 
-`onEvent` и `onReconnected` появляются со срезом 05 (JS-WS-03, JS-WS-08), закрытие 4403 — со срезом 07 (JS-WS-04). До них любой код закрытия — разрыв с переподключением.
+`onEvent` и `onReconnected` появились со срезом 05 (JS-WS-03, JS-WS-08), закрытие 4403 — со срезом 07 (JS-WS-04). До него любой код закрытия — разрыв с переподключением.
 
 | ID | Поведение (фейковый WebSocket, мок api, фейковые таймеры) |
 |---|---|
 | UNIT-JS-WS-01 | `start` берёт токен, открывает соединение, после `open` отправляет `{type: "auth", token}` и показывает статус `reconnecting` до `auth.ok` |
 | UNIT-JS-WS-02 | `auth.ok` → статус `online`, `backoff.reset()`, ping каждые 25 секунд. Провайдер других сообщений (`pong`, не объект, без `type`, не JSON) статус не меняет |
-| UNIT-JS-WS-03 | Событие `comment.*` → `onEvent(event)`; `pong` и неизвестный `type` событием не считаются |
+| UNIT-JS-WS-03 | Событие `comment.created`, `updated`, `deleted`, `restored` с объектом `comment` → `onEvent(event)`; `pong`, неизвестный `type` и событие без объекта `comment` событием не считаются |
 | UNIT-JS-WS-04 | Закрытие с 4403 → статус `offline`, `navigateToLogin()`, переподключения нет |
 | UNIT-JS-WS-05 | Провайдер кодов 4400, 4401, 1011, 1001, 1006 → статус `reconnecting`, пауза `backoff.next()`, новый токен, новое соединение. Ping разорванного соединения больше не уходит |
 | UNIT-JS-WS-06 | Новый токен не выдали (`UnauthorizedError`) → `navigateToLogin()` |

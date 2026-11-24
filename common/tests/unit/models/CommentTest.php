@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace common\tests\unit\models;
 
+use Closure;
 use Codeception\Attribute\DataProvider;
 use Codeception\Test\Unit;
 use common\models\Comment;
+use common\models\User;
 use common\tests\UnitTester;
 use PHPUnit\Framework\Attributes\TestDox;
 use Yii;
@@ -55,6 +57,52 @@ final class CommentTest extends Unit
         $order = Comment::find()->andWhere(['like', 'author', $tag])->newestFirst()->select('id')->column();
 
         self::assertSame([$tieSecond->id, $tieFirst->id, $older->id], $order);
+    }
+
+    /**
+     * @param Closure(?Comment): ?User $relation
+     */
+    #[TestDox('UNIT-AR-04: связь аудита у комментария без правки и удаления — null')]
+    #[DataProvider('auditRelations')]
+    public function testAuditRelationOfUntouchedCommentIsNull(string $column, Closure $relation): void
+    {
+        $comment = $this->tester->haveComment();
+
+        $admin = $relation(Comment::findOne($comment->id));
+
+        self::assertNull($admin);
+    }
+
+    /**
+     * @param Closure(?Comment): ?User $relation
+     */
+    #[TestDox('UNIT-AR-04: связь аудита отдаёт админа из своей колонки')]
+    #[DataProvider('auditRelations')]
+    public function testAuditRelationReturnsAdminOfItsColumn(string $column, Closure $relation): void
+    {
+        $expected = $this->tester->haveAdmin();
+        $other = $this->tester->haveAdmin();
+        $comment = $this->tester->haveComment(array_replace(
+            ['updated_at' => '2026-11-24 10:00:00+00', 'updated_by' => $other->id, 'deleted_at' => '2026-11-24 11:00:00+00', 'deleted_by' => $other->id],
+            [$column => $expected->id],
+        ));
+
+        $admin = $relation(Comment::findOne($comment->id));
+
+        self::assertSame($expected->username, $admin?->username);
+    }
+
+    /**
+     * Колонка аудита и связь, которая по ней читает админа. В другой колонке — другой админ.
+     *
+     * @return array<string, array{string, Closure(?Comment): ?User}>
+     */
+    public static function auditRelations(): array
+    {
+        return [
+            'updatedByUser' => ['updated_by', static fn(?Comment $comment): ?User => $comment?->updatedByUser],
+            'deletedByUser' => ['deleted_by', static fn(?Comment $comment): ?User => $comment?->deletedByUser],
+        ];
     }
 
     #[TestDox('UNIT-AR-05: БД отклоняет deleted_at без deleted_by и наоборот')]

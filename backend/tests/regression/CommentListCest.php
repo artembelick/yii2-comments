@@ -50,7 +50,9 @@ final class CommentListCest
 
         $I->seeResponseCodeIs(200);
         $I->see(Yii::t('app', Examples::string($example, 'message')));
-        $I->dontSeeElement('table');
+        // Таблица есть, но скрыта: в неё встаёт комментарий, пришедший по WS.
+        $I->seeElement('table[hidden]');
+        $I->dontSeeElement('table:not([hidden])');
     }
 
     /**
@@ -61,6 +63,113 @@ final class CommentListCest
         return [
             '«Активные»' => ['url' => '/', 'message' => 'admin.empty.active'],
             '«Удалённые»' => ['url' => '/?status=deleted', 'message' => 'admin.empty.deleted'],
+        ];
+    }
+
+    /** REG-A-33: на странице списка есть шаблон строки и адрес WS */
+    #[Group('parallel')]
+    public function listPageCarriesRowTemplateAndWsUrl(RegressionTester $I): void
+    {
+        $I->amSignedInAs($I->haveAdmin());
+
+        $I->amOnPage('/');
+
+        $I->seeElement('template[data-row-template]');
+        $I->assertSame('ws://admin.comments.localhost/ws', $I->grabAttributeFrom('[data-ws-url]', 'data-ws-url'));
+    }
+
+    /**
+     * REG-A-61: JSON-список «Активных» — новые сверху, 20 на странице
+     *
+     * @param Example<string, mixed> $example
+     */
+    #[Group('exclusive')]
+    #[DataProvider('jsonPages')]
+    public function jsonListPagesActiveNewestFirst(RegressionTester $I, Example $example): void
+    {
+        $newestFirst = array_reverse($I->haveComments(21));
+        $I->amSignedInAs($I->haveAdmin());
+        $length = Examples::int($example, 'length');
+
+        $items = $I->grabJsonList('active', Examples::int($example, 'page'))['items'];
+
+        $I->assertSame(array_slice($newestFirst, Examples::int($example, 'offset'), $length), array_slice(array_column($items, 'text'), 0, $length));
+        $I->assertSame(array_fill(0, $length, 'active'), array_slice(array_column($items, 'status'), 0, $length));
+    }
+
+    /**
+     * REG-A-61: JSON-список «Удалённых» — новые сверху, 20 на странице
+     *
+     * @param Example<string, mixed> $example
+     */
+    #[Group('exclusive')]
+    #[DataProvider('jsonPages')]
+    public function jsonListPagesDeletedNewestFirst(RegressionTester $I, Example $example): void
+    {
+        $admin = $I->haveAdmin();
+        $newestFirst = array_reverse($I->haveComments(21, ['deleted_at' => new Expression('now()'), 'deleted_by' => $admin->id]));
+        $I->amSignedInAs($admin);
+        $length = Examples::int($example, 'length');
+
+        $items = $I->grabJsonList('deleted', Examples::int($example, 'page'))['items'];
+
+        $I->assertSame(array_slice($newestFirst, Examples::int($example, 'offset'), $length), array_slice(array_column($items, 'text'), 0, $length));
+        $I->assertSame(array_fill(0, $length, 'deleted'), array_slice(array_column($items, 'status'), 0, $length));
+    }
+
+    /**
+     * Страница и какие из 21 комментария (новые сверху) на ней первыми. На стр. 2 после нашего могут идти чужие.
+     *
+     * @return array<string, array{page: int, offset: int, length: int}>
+     */
+    private function jsonPages(): array
+    {
+        return [
+            'стр. 1 — 20 новых' => ['page' => 1, 'offset' => 0, 'length' => 20],
+            'стр. 2 — 21-й' => ['page' => 2, 'offset' => 20, 'length' => 1],
+        ];
+    }
+
+    /** REG-A-61: комментарий в JSON-списке — поля контракта */
+    #[Group('exclusive')]
+    public function jsonListItemHasContractFields(RegressionTester $I): void
+    {
+        $I->haveComment();
+        $I->amSignedInAs($I->haveAdmin());
+
+        $items = $I->grabJsonList('active', 1)['items'];
+
+        $I->assertSame(
+            [['id', 'author', 'text', 'status', 'createdAt', 'updatedAt', 'updatedBy', 'deletedBy']],
+            array_map(array_keys(...), array_slice($items, 0, 1)),
+        );
+    }
+
+    /**
+     * REG-A-61a: JSON-список с неизвестным или пустым status → 400
+     *
+     * @param Example<string, mixed> $example
+     */
+    #[Group('parallel')]
+    #[DataProvider('badStatuses')]
+    public function jsonListRejectsUnknownStatus(RegressionTester $I, Example $example): void
+    {
+        $I->amSignedInAs($I->haveAdmin());
+
+        $I->sendGet('/api/comments', ['status' => Examples::string($example, 'status')]);
+
+        $I->seeResponseCodeIs(400);
+        $I->seeResponseContainsJson(['error' => 'invalid_status']);
+    }
+
+    /**
+     * @return array<string, array{status: string}>
+     */
+    private function badStatuses(): array
+    {
+        return [
+            'status=foo' => ['status' => 'foo'],
+            'status пустой' => ['status' => ''],
         ];
     }
 }

@@ -58,6 +58,16 @@ final class RegressionTester extends Actor
         $this->startFollowingRedirects();
     }
 
+    /** Свежий счётчик лимита и пять невалидных отправок: следующая отправка получит 429. */
+    public function exhaustCommentLimit(): void
+    {
+        $this->resetCommentLimit();
+        for ($attempt = 1; $attempt <= 5; ++$attempt) {
+            $this->postCommentWithinLimit(['name' => 'Я', 'text' => 'Невалидное имя']);
+            $this->seeResponseCodeIs(422);
+        }
+    }
+
     /** Текст ошибки поля в последнем ответе на отправку. */
     public function seeFieldError(string $messageKey): void
     {

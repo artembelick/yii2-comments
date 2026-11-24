@@ -30,4 +30,21 @@ final class RecordingLogger extends Logger
 
         return array_values(array_map(static fn(array $message): int => $message[1], $messages));
     }
+
+    /**
+     * Уровни и тексты сообщений одной категории в порядке записи.
+     *
+     * @return list<array{int, string}>
+     */
+    public function messagesOf(string $category): array
+    {
+        $found = [];
+        foreach ($this->messages as [$text, $level, $messageCategory]) {
+            if ($messageCategory === $category) {
+                $found[] = [$level, is_string($text) ? $text : ''];
+            }
+        }
+
+        return $found;
+    }
 }

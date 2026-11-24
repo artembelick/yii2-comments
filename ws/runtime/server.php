@@ -17,23 +17,23 @@ use ws\ActiveAdminChecker;
 use ws\ConnectionRegistry;
 use ws\MessageHandler;
 use ws\OriginPolicy;
+use ws\RedisDispatcher;
+use ws\runtime\RedisSubscriber;
 use ws\runtime\WorkermanConnection;
 use ws\runtime\WorkermanTimer;
 
 /** @var Closure(string): string $env */
 $env = require dirname(__DIR__, 2) . '/common/config/env.php';
-
 defined('YII_DEBUG') || define('YII_DEBUG', $env('YII_DEBUG') === '1');
 defined('YII_ENV') || define('YII_ENV', $env('YII_ENV'));
-
 require dirname(__DIR__, 2) . '/vendor/autoload.php';
 require dirname(__DIR__, 2) . '/vendor/yiisoft/yii2/Yii.php';
 require dirname(__DIR__, 2) . '/common/config/bootstrap.php';
 
 new yii\console\Application(require dirname(__DIR__) . '/config/main.php');
-
+$registry = new ConnectionRegistry();
 $handler = new MessageHandler(
-    new ConnectionRegistry(),
+    $registry,
     Yii::$container->get(WsTokenService::class),
     new ActiveAdminChecker(Yii::$container->get(UserRepositoryInterface::class), Yii::$app->getDb()),
     new WorkermanTimer(),
@@ -51,7 +51,8 @@ $worker->onWebSocketConnect = static fn(TcpConnection $connection, Request $requ
 );
 $worker->onMessage = static fn(TcpConnection $connection, string $data) => $handler->onMessage(new WorkermanConnection($connection), $data);
 $worker->onClose = static fn(TcpConnection $connection) => $handler->onClose(new WorkermanConnection($connection));
-
+// События из Redis рассылаются соединениям этого же процесса: реестр у них общий.
+$worker->onWorkerStart = static fn() => RedisSubscriber::start(Yii::$app->get('redis'), new RedisDispatcher($registry));
 // Без daemonize Workerman сам печатает лог в stdout контейнера; файл лога не нужен.
 Worker::$logFile = '/dev/null';
 Worker::$pidFile = sys_get_temp_dir() . '/comments-ws.pid';

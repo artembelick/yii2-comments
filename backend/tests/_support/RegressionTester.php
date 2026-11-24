@@ -76,6 +76,20 @@ final class RegressionTester extends Actor
     }
 
     /**
+     * GET /api/comments вошедшим админом: ответ 200, разобранный JSON страницы вкладки.
+     *
+     * @return array{items: list<array<string, mixed>>, page: int, pageCount: int, totalCount: int}
+     */
+    public function grabJsonList(string $status, int $page): array
+    {
+        $this->sendGet('/api/comments', ['status' => $status, 'page' => $page]);
+        $this->seeResponseCodeIs(200);
+
+        /** @var array{items: list<array<string, mixed>>, page: int, pageCount: int, totalCount: int} */
+        return json_decode($this->grabResponse(), true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    /**
      * Заголовки Set-Cookie последнего ответа.
      *
      * @return list<string>

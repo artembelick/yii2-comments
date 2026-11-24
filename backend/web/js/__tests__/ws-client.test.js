@@ -19,6 +19,8 @@ const URL = "ws://admin.comments.localhost/ws";
  *   backoff: import("../backoff.js").Backoff,
  *   statuses: string[],
  *   logins: string[],
+ *   events: unknown[],
+ *   reconnects: string[],
  * }}
  */
 const client = (fetchToken) => {
@@ -32,6 +34,10 @@ const client = (fetchToken) => {
   const statuses = [];
   /** @type {string[]} */
   const logins = [];
+  /** @type {unknown[]} */
+  const events = [];
+  /** @type {string[]} */
+  const reconnects = [];
   const wsClient = createWsClient({
     url: URL,
     api: { fetchToken },
@@ -44,9 +50,15 @@ const client = (fetchToken) => {
     navigateToLogin: () => {
       logins.push("login");
     },
+    onEvent: (event) => {
+      events.push(event);
+    },
+    onReconnected: () => {
+      reconnects.push("reconnected");
+    },
   });
 
-  return { wsClient, sockets, backoff, statuses, logins };
+  return { wsClient, sockets, backoff, statuses, logins, events, reconnects };
 };
 
 describe("ws-client", () => {
@@ -91,6 +103,71 @@ describe("ws-client", () => {
       expect([statuses, sockets.length, sockets[0]?.closed]).toStrictEqual([["reconnecting"], 1, false]);
     },
   );
+
+  it.each(["comment.created", "comment.updated", "comment.deleted", "comment.restored"])(
+    "UNIT-JS-WS-03: событие %s → onEvent(event)",
+    async (type) => {
+      const event = { type, comment: { id: 42, author: "Ян", text: "Комментарий" } };
+      const { wsClient, sockets, events } = client(vi.fn().mockResolvedValue("token-1"));
+      wsClient.start();
+      await vi.advanceTimersByTimeAsync(0);
+      sockets[0]?.open();
+      sockets[0]?.receive({ type: "auth.ok" });
+
+      sockets[0]?.receive(event);
+
+      expect(events).toStrictEqual([event]);
+    },
+  );
+
+  it.each([
+    '{"type":"pong"}',
+    '{"type":"auth.ok"}',
+    '{"type":"comment.liked","comment":{}}',
+    '{"comment":{}}',
+    '{"type":"comment.created"}',
+    '{"type":"comment.created","comment":null}',
+    '{"type":"comment.created","comment":"42"}',
+    '"comment.created"',
+    "null",
+    '{"type":',
+  ])("UNIT-JS-WS-03: %s событием не считается", async (text) => {
+    const { wsClient, sockets, events } = client(vi.fn().mockResolvedValue("token-1"));
+    wsClient.start();
+    await vi.advanceTimersByTimeAsync(0);
+    sockets[0]?.open();
+    sockets[0]?.receive({ type: "auth.ok" });
+
+    sockets[0]?.receiveRaw(text);
+
+    expect(events).toStrictEqual([]);
+  });
+
+  it("UNIT-JS-WS-08: первое подключение onReconnected не вызывает", async () => {
+    const { wsClient, sockets, reconnects } = client(vi.fn().mockResolvedValue("token-1"));
+    wsClient.start();
+    await vi.advanceTimersByTimeAsync(0);
+    sockets[0]?.open();
+
+    sockets[0]?.receive({ type: "auth.ok" });
+
+    expect(reconnects).toStrictEqual([]);
+  });
+
+  it("UNIT-JS-WS-08: auth.ok после переподключения → onReconnected() один раз", async () => {
+    const { wsClient, sockets, reconnects } = client(vi.fn().mockResolvedValue("token-1"));
+    wsClient.start();
+    await vi.advanceTimersByTimeAsync(0);
+    sockets[0]?.open();
+    sockets[0]?.receive({ type: "auth.ok" });
+    sockets[0]?.drop(1006);
+    await vi.advanceTimersByTimeAsync(1000);
+    sockets[1]?.open();
+
+    sockets[1]?.receive({ type: "auth.ok" });
+
+    expect(reconnects).toStrictEqual(["reconnected"]);
+  });
 
   it.each([4400, 4401, 1011, 1001, 1006])(
     "UNIT-JS-WS-05: закрытие с кодом %i → reconnecting, до конца паузы backoff нового соединения нет",

@@ -60,7 +60,7 @@ final class AccessCest
     }
 
     /**
-     * JSON-эндпоинты админки, которые есть на этом срезе. JSON-список добавляет срез 05.
+     * JSON-эндпоинты админки.
      *
      * @return array<string, array{method: string, url: string}>
      */
@@ -68,6 +68,7 @@ final class AccessCest
     {
         return [
             'токен WS' => ['method' => 'POST', 'url' => '/api/ws-token'],
+            'список' => ['method' => 'GET', 'url' => '/api/comments'],
         ];
     }
 }

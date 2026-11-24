@@ -23,4 +23,7 @@ interface RedisClientInterface
 
     /** GETDEL: читает значение и удаляет ключ одной командой. Ключа нет — null. */
     public function getDel(string $key): ?string;
+
+    /** PUBLISH: сообщение подписчикам канала. */
+    public function publish(string $channel, string $message): void;
 }

@@ -27,3 +27,21 @@ export function message(key: string): string {
 
   return text;
 }
+
+const PLURAL_FORMS = /(?<category>zero|one|two|few|many|other)\{(?<form>[^}]*)\}/gu;
+
+/**
+ * Текст сообщения с ICU plural для числа count: `{n, plural, one{# новый} few{…} many{…}}`.
+ * Форма выбирается через Intl.PluralRules('ru'), как в клиенте админки, а `#` заменяется числом.
+ */
+export function plural(key: string, count: number): string {
+  const forms = new Map(
+    [...message(key).matchAll(PLURAL_FORMS)].map((match) => [match.groups?.["category"], match.groups?.["form"]]),
+  );
+  const form = forms.get(new Intl.PluralRules("ru").select(count));
+  if (form === undefined) {
+    throw new Error(`В ${key} нет формы для ${count}`);
+  }
+
+  return form.replaceAll("#", String(count));
+}

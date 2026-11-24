@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace frontend\tests\unit\controllers;
 
 use Codeception\Test\Unit;
+use common\events\EventPublisherInterface;
 use common\models\Comment;
 use common\repositories\CommentPage;
 use common\repositories\CommentRepositoryInterface;
@@ -32,6 +33,8 @@ final class CommentControllerTest extends Unit
     protected function _before(): void
     {
         $_SERVER['REMOTE_ADDR'] = self::GUEST_IP;
+        // Публикацию событий проверяет UNIT-SVC-01, здесь она не должна уходить в Redis.
+        Yii::$container->set(EventPublisherInterface::class, self::createStub(EventPublisherInterface::class));
     }
 
     #[Override]
@@ -78,7 +81,7 @@ final class CommentControllerTest extends Unit
         $comments = $this->createMock(CommentRepositoryInterface::class);
         $comments->expects(self::once())->method('create')
             ->with('Ян', 'Комментарий', new DateTimeImmutable(self::NOW))
-            ->willReturn(new Comment());
+            ->willReturn($this->comment('Ян', 'Комментарий'));
         Yii::$container->set(CommentRepositoryInterface::class, $comments);
         Yii::$container->set(ClockInterface::class, new MockClock(self::NOW));
         Yii::$container->set(RateLimiterInterface::class, $this->limiterAllowing(true));
@@ -132,7 +135,7 @@ final class CommentControllerTest extends Unit
         $limiter->method('hit')->willThrowException(new RateLimiterUnavailableException('redis down'));
         Yii::$container->set(RateLimiterInterface::class, $limiter);
         $comments = $this->createMock(CommentRepositoryInterface::class);
-        $comments->expects(self::once())->method('create')->willReturn(new Comment());
+        $comments->expects(self::once())->method('create')->willReturn($this->comment('Ян', 'Комментарий'));
         Yii::$container->set(CommentRepositoryInterface::class, $comments);
         $logger = new Logger();
         Yii::setLogger($logger);
@@ -191,6 +194,8 @@ final class CommentControllerTest extends Unit
     {
         $comment = new Comment();
         $comment->setAttributes(['id' => 1, 'author' => $author, 'text' => $text, 'created_at' => '2026-11-24 10:00:00+00'], false);
+        $comment->populateRelation('updatedByUser', null);
+        $comment->populateRelation('deletedByUser', null);
 
         return $comment;
     }

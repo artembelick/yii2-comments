@@ -43,8 +43,9 @@ final class ActiveRecordCommentRepository implements CommentRepositoryInterface
         $pageCount = max(1, (int) ceil($totalCount / $perPage));
         $page = min(max($page, 1), $pageCount);
 
+        // Аудит нужен каждой строке списка: админы подгружаются двумя запросами на страницу, а не по запросу на строку.
         /** @var list<Comment> $items */
-        $items = $query->newestFirst()->offset(($page - 1) * $perPage)->limit($perPage)->all();
+        $items = $query->with(['updatedByUser', 'deletedByUser'])->newestFirst()->offset(($page - 1) * $perPage)->limit($perPage)->all();
 
         return new CommentPage($items, $totalCount, $page, $pageCount);
     }

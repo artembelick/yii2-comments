@@ -6,6 +6,7 @@ namespace backend\tests\unit\controllers;
 
 use Codeception\Attribute\DataProvider;
 use Codeception\Test\Unit;
+use common\models\Comment;
 use common\models\User;
 use common\repositories\CommentPage;
 use common\repositories\CommentRepositoryInterface;
@@ -13,6 +14,7 @@ use common\repositories\CommentStatus;
 use PHPUnit\Framework\Attributes\TestDox;
 use Yii;
 use yii\web\BadRequestHttpException;
+use yii\web\Response;
 
 final class CommentControllerTest extends Unit
 {
@@ -50,13 +52,74 @@ final class CommentControllerTest extends Unit
     #[TestDox('UNIT-BC-01: status=foo → 400')]
     public function testUnknownStatusIsBadRequest(): void
     {
-        $comments = $this->createMock(CommentRepositoryInterface::class);
-        $comments->expects(self::never())->method('page');
-        Yii::$container->set(CommentRepositoryInterface::class, $comments);
+        Yii::$container->set(CommentRepositoryInterface::class, self::createStub(CommentRepositoryInterface::class));
         Yii::$app->user->setIdentity(new User());
 
         $this->expectException(BadRequestHttpException::class);
 
         Yii::$app->runAction('comment/index', ['status' => 'foo']);
+    }
+
+    #[TestDox('UNIT-BC-06: list → JSON со страницей вкладки по 20 записей: items, page, pageCount и totalCount')]
+    public function testListReturnsPageAsJson(): void
+    {
+        $comments = $this->createMock(CommentRepositoryInterface::class);
+        $comments->expects(self::once())->method('page')->with(CommentStatus::Deleted, 2, 20)
+            ->willReturn(new CommentPage([$this->deletedComment(42, 'Ян')], 21, 2, 2));
+        Yii::$container->set(CommentRepositoryInterface::class, $comments);
+        Yii::$app->user->setIdentity(new User());
+
+        $response = Yii::$app->runAction('comment/list', ['status' => 'deleted', 'page' => '2']);
+
+        self::assertInstanceOf(Response::class, $response);
+        self::assertSame([200, Response::FORMAT_JSON], [$response->statusCode, $response->format]);
+        self::assertSame([
+            'items' => [[
+                'id' => 42,
+                'author' => 'Ян',
+                'text' => 'Комментарий',
+                'status' => 'deleted',
+                'createdAt' => '2026-11-24T10:00:00Z',
+                'updatedAt' => null,
+                'updatedBy' => null,
+                'deletedBy' => 'boris',
+            ]],
+            'page' => 2,
+            'pageCount' => 2,
+            'totalCount' => 21,
+        ], $response->data);
+    }
+
+    #[TestDox('UNIT-BC-06: list с неверным status → 400 и JSON с error invalid_status')]
+    public function testListRejectsUnknownStatus(): void
+    {
+        Yii::$container->set(CommentRepositoryInterface::class, self::createStub(CommentRepositoryInterface::class));
+        Yii::$app->user->setIdentity(new User());
+
+        $response = Yii::$app->runAction('comment/list', ['status' => 'foo']);
+
+        self::assertInstanceOf(Response::class, $response);
+        self::assertSame([400, ['error' => 'invalid_status']], [$response->statusCode, $response->data]);
+    }
+
+    /** Комментарий вкладки «Удалённые»: удалил админ boris. */
+    private function deletedComment(int $id, string $author): Comment
+    {
+        $remover = new User();
+        $remover->username = 'boris';
+
+        $comment = new Comment();
+        $comment->setAttributes([
+            'id' => $id,
+            'author' => $author,
+            'text' => 'Комментарий',
+            'created_at' => '2026-11-24 10:00:00+00',
+            'deleted_at' => '2026-11-24 11:00:00+00',
+            'deleted_by' => 7,
+        ], false);
+        $comment->populateRelation('updatedByUser', null);
+        $comment->populateRelation('deletedByUser', $remover);
+
+        return $comment;
     }
 }

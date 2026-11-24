@@ -16,6 +16,8 @@ interface TestFixtures {
   faker: Faker;
   /** Гость в своём browser context (БР-2) на публичной части. Счётчики лимита перед тестом сброшены. */
   guest: Page;
+  /** HTTP-клиент гостя без браузера для REG-WS: отправляет форму через postComment. Счётчики лимита сброшены. */
+  guestApi: APIRequestContext;
   /** HTTP-клиент без браузера, вошедший свежим админом из фабрики: для токена WS в REG-WS. */
   adminApi: APIRequestContext;
   /** Соединения REG-WS. Всё, что тест открыл, закрывается после теста, а не в его теле. */
@@ -40,6 +42,12 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     const context = await browser.newContext({ baseURL: requireEnv("PUBLIC_URL") });
     await use(await context.newPage());
     await context.close();
+  },
+  guestApi: async ({ playwright, redis }, use) => {
+    await resetRateLimits(redis);
+    const request = await playwright.request.newContext();
+    await use(request);
+    await request.dispose();
   },
   adminApi: async ({ playwright, db, faker }, use) => {
     const request = await playwright.request.newContext();

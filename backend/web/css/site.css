@@ -1,5 +1,12 @@
-.comment-text {
+.comment-text,
+.comment-audit {
     white-space: pre-line;
+}
+
+/* Строка, пришедшая по WS: подсветку ставит и через 3 секунды снимает comment-list.js. */
+tr[data-highlighted="true"] > td {
+    background: var(--bs-warning-bg-subtle);
+    transition: background 0.3s;
 }
 
 /* Индикатор связи с WS-сервером: состояние ставит status-indicator.js в data-state. */

@@ -24,6 +24,16 @@ final class Examples
 
     /**
      * @param Example<string, mixed> $example
+     */
+    public static function int(Example $example, string $key): int
+    {
+        $value = $example[$key];
+
+        return is_int($value) ? $value : throw new UnexpectedValueException(sprintf('В наборе провайдера %s — не целое', $key));
+    }
+
+    /**
+     * @param Example<string, mixed> $example
      *
      * @return array<mixed>
      */

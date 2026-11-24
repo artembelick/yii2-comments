@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use common\events\EventPublisherInterface;
+use common\events\RedisEventPublisher;
 use common\redis\RedisClientInterface;
 use common\redis\YiiRedisClient;
 use common\repositories\ActiveRecordCommentRepository;
@@ -37,6 +39,7 @@ return [
             ClockInterface::class => NativeClock::class,
             RedisClientInterface::class => static fn(): YiiRedisClient => new YiiRedisClient(Yii::$app->get('redis')),
             RateLimiterInterface::class => RateLimiter::class,
+            EventPublisherInterface::class => RedisEventPublisher::class,
         ],
     ],
     'components' => [
@@ -57,6 +60,10 @@ return [
             'hostname' => $env('REDIS_HOST'),
             'port' => (int) $env('REDIS_PORT'),
             'database' => 0,
+            // Без таймаутов недоступный Redis (пакеты теряются, отказа нет) держал бы запрос гостя
+            // до default_socket_timeout — 60 секунд. Ws-процесс задаёт свои, ещё короче (ws/config/main.php).
+            'connectionTimeout' => 3,
+            'dataTimeout' => 3,
         ],
         // В БД и JSON время в UTC, на экране — в DISPLAY_TIMEZONE (docs/test-plans/unit.md, «Схема»).
         'formatter' => [

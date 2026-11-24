@@ -154,6 +154,14 @@
       }
     },
     {
+      // В JSON-контракте комментария (CommentSerializer) null — значение поля: updatedAt, updatedBy, deletedBy.
+      // Тесты клиента и REG-WS сверяют этот контракт литералами.
+      "files": ["backend/web/js/__tests__/**", "e2e/tests/**"],
+      "rules": {
+        "unicorn/no-null": "off"
+      }
+    },
+    {
       // Строки фабрик — это строки таблиц: null в них и есть SQL NULL.
       "files": ["e2e/support/factories.ts"],
       "rules": {

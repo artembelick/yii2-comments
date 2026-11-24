@@ -47,6 +47,7 @@ return [
                 'logout' => 'auth/logout',
                 // Без ограничения метода в правиле: GET доходит до VerbFilter и получает 405, а не 404.
                 'api/ws-token' => 'ws-token/create',
+                'api/comments' => 'comment/list',
             ],
         ],
         'log' => [

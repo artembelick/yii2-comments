@@ -20,7 +20,7 @@ const closeCodeOf = async (socket: WebSocket): Promise<number> => {
  */
 export class WsProbe {
   readonly #socket: WebSocket;
-  readonly #messages: AsyncIterator<unknown[]>;
+  readonly #messages: AsyncIterableIterator<unknown[]>;
   readonly #closed: Promise<number>;
   readonly #errors: Error[] = [];
 
@@ -52,6 +52,36 @@ export class WsProbe {
     }
 
     return JSON.parse(data.toString("utf8"));
+  }
+
+  /**
+   * Первое сообщение и все следующие до ответа на ping. Ping уходит после первого сообщения как метка конца:
+   * сервер отвечает по порядку, и второе событие пришло бы раньше pong. Сам pong в результат не входит.
+   */
+  public async messagesUntilPong(): Promise<unknown[]> {
+    const first = await this.nextMessage();
+    this.send({ type: "ping" });
+
+    return [first, ...(await this.#messagesBeforePong())];
+  }
+
+  async #messagesBeforePong(): Promise<unknown[]> {
+    const next = await this.nextMessage();
+    if (JSON.stringify(next) === JSON.stringify({ type: "pong" })) {
+      return [];
+    }
+
+    return [next, ...(await this.#messagesBeforePong())];
+  }
+
+  /** Все сообщения, которые сервер прислал до закрытия соединения, в порядке прихода. Ждёт закрытия. */
+  public async messagesUntilClose(): Promise<unknown[]> {
+    const messages: unknown[] = [];
+    for await (const [data] of this.#messages) {
+      messages.push(JSON.parse(String(data)));
+    }
+
+    return messages;
   }
 
   /** Код, с которым сервер закрыл соединение. */

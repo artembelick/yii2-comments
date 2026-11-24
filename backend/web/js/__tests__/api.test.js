@@ -33,6 +33,19 @@ describe("api", () => {
     });
   });
 
+  it("UNIT-JS-API-02: fetchList отправляет GET /api/comments?status=…&page=… с cookie сессии и возвращает разобранный JSON", async () => {
+    const page = { items: [], page: 2, pageCount: 3, totalCount: 41 };
+    const fetchImpl = replying(200, JSON.stringify(page));
+    const api = createApi({ fetchImpl, csrfToken: CSRF, baseUrl: BASE_URL });
+
+    const list = await api.fetchList("deleted", 2);
+
+    expect(list).toStrictEqual(page);
+    expect(fetchImpl).toHaveBeenCalledWith(`${BASE_URL}/api/comments?status=deleted&page=2`, {
+      credentials: "same-origin",
+    });
+  });
+
   it("UNIT-JS-API-03: ответ 401 → UnauthorizedError", async () => {
     const api = createApi({
       fetchImpl: replying(401, '{"error":"unauthorized"}'),
@@ -52,9 +65,20 @@ describe("api", () => {
     { name: "token не строка", fetchImpl: replying(200, '{"token":42}') },
     { name: "JSON null", fetchImpl: replying(200, "null") },
     { name: "JSON строка", fetchImpl: replying(200, '"token-1"') },
-  ])("UNIT-JS-API-04: $name → UnavailableError", async ({ fetchImpl }) => {
+  ])("UNIT-JS-API-04: fetchToken, $name → UnavailableError", async ({ fetchImpl }) => {
     const api = createApi({ fetchImpl, csrfToken: CSRF, baseUrl: BASE_URL });
 
     await expect(api.fetchToken()).rejects.toBeInstanceOf(UnavailableError);
+  });
+
+  it.each([
+    { name: "ответ 503", fetchImpl: replying(503, '{"error":"unavailable"}') },
+    { name: "в JSON нет items", fetchImpl: replying(200, '{"error":"invalid_status"}') },
+    { name: "items не массив", fetchImpl: replying(200, '{"items":{}}') },
+    { name: "JSON null", fetchImpl: replying(200, "null") },
+  ])("UNIT-JS-API-04: fetchList, $name → UnavailableError", async ({ fetchImpl }) => {
+    const api = createApi({ fetchImpl, csrfToken: CSRF, baseUrl: BASE_URL });
+
+    await expect(api.fetchList("active", 1)).rejects.toBeInstanceOf(UnavailableError);
   });
 });
