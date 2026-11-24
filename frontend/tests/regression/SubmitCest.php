@@ -258,46 +258,66 @@ final class SubmitCest
     }
 
     /**
-     * REG-G-18: управляющие символы, bidi и битые байты вырезаются, табуляция и перенос в имени → пробел, 302 и в ленте очищенное
+     * REG-G-18: управляющие символы, bidi, битые байты и табуляция вырезаются или заменяются, перенос в имени → пробел, 302 и в ленте очищенное имя
      *
      * @param Example<string, mixed> $example
      */
-    #[DataProvider('charactersToClean')]
-    public function invisibleCharactersAreCleaned(RegressionTester $I, Example $example): void
+    #[DataProvider('namesToClean')]
+    public function invisibleCharactersInNameAreCleaned(RegressionTester $I, Example $example): void
     {
-        $tag = $I->fixtureFactory()->tag();
-        $field = Examples::string($example, 'field');
-        $fields = ['name' => 'Ян ' . $tag, 'text' => 'Текст ' . $tag];
+        $text = 'Текст ' . $I->fixtureFactory()->tag();
 
-        $I->postComment([...$fields, $field => Examples::string($example, 'value')]);
+        $I->postComment(['name' => Examples::string($example, 'name'), 'text' => $text]);
 
         $I->seeResponseCodeIs(302);
-        $I->assertSame(
-            [['author' => $fields['name'], 'text' => $fields['text'], Examples::string($example, 'shownAs') => Examples::string($example, 'cleaned')]],
-            array_slice($I->grabFeedComments('/'), 0, 1),
-        );
+        $I->assertSame([['author' => Examples::string($example, 'author'), 'text' => $text]], array_slice($I->grabFeedComments('/'), 0, 1));
     }
 
     /**
-     * shownAs — где поле видно в ленте: имя показывается как автор.
-     *
-     * @return array<string, array{field: string, shownAs: string, value: string, cleaned: string}>
+     * @return array<string, array{name: string, author: string}>
      */
-    private function charactersToClean(): array
+    private function namesToClean(): array
     {
         return [
-            'перенос в имени' => ['field' => 'name', 'shownAs' => 'author', 'value' => "Ян\nМария", 'cleaned' => 'Ян Мария'],
-            '\r\n в имени' => ['field' => 'name', 'shownAs' => 'author', 'value' => "Ян\r\nМария", 'cleaned' => 'Ян Мария'],
-            '\0 в имени' => ['field' => 'name', 'shownAs' => 'author', 'value' => "Ян\0", 'cleaned' => 'Ян'],
-            '\x07 в имени' => ['field' => 'name', 'shownAs' => 'author', 'value' => "Ян\x07Мария", 'cleaned' => 'ЯнМария'],
-            '\t в имени' => ['field' => 'name', 'shownAs' => 'author', 'value' => "Ян\t\tМария", 'cleaned' => 'Ян  Мария'],
-            'bidi в имени' => ['field' => 'name', 'shownAs' => 'author', 'value' => "Ян\u{202E}Мария", 'cleaned' => 'ЯнМария'],
-            'невалидный UTF-8 в имени' => ['field' => 'name', 'shownAs' => 'author', 'value' => "Ян\xFFМария", 'cleaned' => 'ЯнМария'],
-            '\0 в тексте' => ['field' => 'text', 'shownAs' => 'text', 'value' => "Текст\0", 'cleaned' => 'Текст'],
-            '\x07 в тексте' => ['field' => 'text', 'shownAs' => 'text', 'value' => "Текст\x07ещё", 'cleaned' => 'Текстещё'],
-            '\t в тексте' => ['field' => 'text', 'shownAs' => 'text', 'value' => "Текст\tещё", 'cleaned' => 'Текст ещё'],
-            'bidi в тексте' => ['field' => 'text', 'shownAs' => 'text', 'value' => "Текст\u{2066}ещё\u{2069}", 'cleaned' => 'Текстещё'],
-            'невалидный UTF-8 в тексте' => ['field' => 'text', 'shownAs' => 'text', 'value' => "Текст\xC3ещё", 'cleaned' => 'Текстещё'],
+            'перенос' => ['name' => "Ян\nМария", 'author' => 'Ян Мария'],
+            '\r\n' => ['name' => "Ян\r\nМария", 'author' => 'Ян Мария'],
+            '\0' => ['name' => "Ян\0", 'author' => 'Ян'],
+            '\x07' => ['name' => "Ян\x07Мария", 'author' => 'ЯнМария'],
+            '\t' => ['name' => "Ян\t\tМария", 'author' => 'Ян  Мария'],
+            'bidi' => ['name' => "Ян\u{202E}Мария", 'author' => 'ЯнМария'],
+            'bidi-марка RLM' => ['name' => "Ян\u{200F}Мария", 'author' => 'ЯнМария'],
+            'невалидный UTF-8' => ['name' => "Ян\xFFМария", 'author' => 'ЯнМария'],
+        ];
+    }
+
+    /**
+     * REG-G-18: управляющие символы, bidi, битые байты и табуляция в тексте вырезаются или заменяются, 302 и в ленте очищенный текст
+     *
+     * @param Example<string, mixed> $example
+     */
+    #[DataProvider('textsToClean')]
+    public function invisibleCharactersInTextAreCleaned(RegressionTester $I, Example $example): void
+    {
+        $name = 'Ян ' . $I->fixtureFactory()->tag();
+
+        $I->postComment(['name' => $name, 'text' => Examples::string($example, 'text')]);
+
+        $I->seeResponseCodeIs(302);
+        $I->assertSame([['author' => $name, 'text' => Examples::string($example, 'shown')]], array_slice($I->grabFeedComments('/'), 0, 1));
+    }
+
+    /**
+     * @return array<string, array{text: string, shown: string}>
+     */
+    private function textsToClean(): array
+    {
+        return [
+            '\0' => ['text' => "Текст\0", 'shown' => 'Текст'],
+            '\x07' => ['text' => "Текст\x07ещё", 'shown' => 'Текстещё'],
+            '\t' => ['text' => "Текст\tещё", 'shown' => 'Текст ещё'],
+            'bidi' => ['text' => "Текст\u{2066}ещё\u{2069}", 'shown' => 'Текстещё'],
+            'bidi-марки LRM и ALM' => ['text' => "Текст\u{200E}ещё\u{061C}", 'shown' => 'Текстещё'],
+            'невалидный UTF-8' => ['text' => "Текст\xC3ещё", 'shown' => 'Текстещё'],
         ];
     }
 
@@ -310,15 +330,14 @@ final class SubmitCest
     public function fieldOfCleanedCharactersOnlyIsRequired(RegressionTester $I, Example $example): void
     {
         $tag = $I->fixtureFactory()->tag();
-        $field = Examples::string($example, 'field');
-        $fields = ['name' => 'Ян ' . $tag, 'text' => 'Текст ' . $tag, $field => Examples::string($example, 'value')];
+        $latest = $I->haveComment(['author' => 'Ян ' . $tag, 'text' => 'Текст ' . $tag]);
+        $fields = ['name' => 'Ян ' . $tag, 'text' => 'Текст ' . $tag, Examples::string($example, 'field') => Examples::string($example, 'value')];
 
         $I->postComment($fields);
 
         $I->seeResponseCodeIs(422);
         $I->seeFieldError(Examples::string($example, 'error'));
-        $I->dontSeeRecord(Comment::class, ['author' => 'Ян ' . $tag]);
-        $I->dontSeeRecord(Comment::class, ['text' => 'Текст ' . $tag]);
+        $I->assertSame([['author' => $latest->author, 'text' => $latest->text]], array_slice($I->grabFeedComments('/'), 0, 1));
     }
 
     /**
@@ -387,6 +406,19 @@ final class SubmitCest
         $text = 'Введённый текст ' . $I->fixtureFactory()->tag();
 
         $I->postComment(['name' => 'Я', 'text' => $text]);
+
+        $I->seeResponseCodeIs(422);
+        $I->seeFieldError('name.too_short');
+        $I->seeResponseContains('name="name" value="Я"');
+        $I->seeResponseContains('>' . $text . '</textarea>');
+    }
+
+    /** REG-G-21: ошибка валидации у значений с вырезаемыми символами → 422, форма показывает их уже очищенными */
+    public function invalidFormShowsCleanedInput(RegressionTester $I): void
+    {
+        $text = 'Введённый текст ' . $I->fixtureFactory()->tag();
+
+        $I->postComment(['name' => "\u{202E}Я\t\0", 'text' => "\x07" . $text . "\u{2066}"]);
 
         $I->seeResponseCodeIs(422);
         $I->seeFieldError('name.too_short');

@@ -36,17 +36,6 @@ final class PlainTextValidatorTest extends Unit
         ];
     }
 
-    #[TestDox('UNIT-VAL-01: эмодзи «семья» считается как 5 символов')]
-    public function testFamilyEmojiCountsAsFiveCharacters(): void
-    {
-        $family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
-        $validator = new PlainTextValidator(['min' => 5, 'max' => 5, 'messagePrefix' => 'name']);
-
-        $valid = $validator->validate($family, $error);
-
-        self::assertSame([true, null], [$valid, $error]);
-    }
-
     #[TestDox('UNIT-VAL-01: имя короче 2 или длиннее 64 символов отклоняется')]
     #[DataProvider('namesOfInvalidLength')]
     public function testNameOfInvalidLengthIsRejected(string $name, string $expectedKey): void

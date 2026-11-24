@@ -32,11 +32,13 @@ final class CommentTextFormTest extends Unit
     public static function invalidTexts(): array
     {
         $invalidCases = array_filter(CommentFormTest::invalidFields(), static fn(array $case): bool => $case[0] === 'text');
-        $blankCases = array_map(static fn(array $case): array => [$case[1], 'text.required'], CommentFormTest::blankFields());
+        $blankCases = CommentFormTest::blankFields();
+        $blankNames = array_map(static fn(string $name): string => $name . ' → text.required', array_keys($blankCases));
+        $blankTexts = array_map(static fn(array $case): array => [$case[1], 'text.required'], array_values($blankCases));
 
         return [
             ...array_map(static fn(array $case): array => [$case[1], $case[2]], $invalidCases),
-            ...array_combine(array_map(static fn(string $name): string => $name . ' → text.required', array_keys($blankCases)), $blankCases),
+            ...array_combine($blankNames, $blankTexts),
             'массив → field.invalid' => [['текст'], 'field.invalid'],
         ];
     }

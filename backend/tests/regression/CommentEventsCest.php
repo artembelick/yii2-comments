@@ -96,7 +96,7 @@ final class CommentEventsCest
     }
 
     /**
-     * REG-A-71: правка без изменений, повторное удаление или восстановление → событий нет
+     * REG-A-71: правка без изменений (в том числе после очистки), повторное удаление или восстановление → событий нет
      *
      * @param Example<string, mixed> $example
      */
@@ -108,24 +108,25 @@ final class CommentEventsCest
         $I->amSignedInAs($admin);
         $events = RedisChannelProbe::subscribe('comments.events');
 
-        $I->submitAdminForm(sprintf('/comments/%d/%s', $comment->id, Examples::string($example, 'action')), ['text' => $comment->text]);
+        $I->submitAdminForm(sprintf('/comments/%d/%s', $comment->id, Examples::string($example, 'action')), ['text' => $comment->text . Examples::string($example, 'textSuffix')]);
 
         $I->seeResponseCodeIs(302);
         $I->assertSame([], $events->messagesUntilMarker());
     }
 
     /**
-     * Действие и статус комментария, на котором оно ничего не меняет: правка тем же текстом активного,
-     * удаление удалённого, восстановление активного.
+     * Действие и статус комментария, на котором оно ничего не меняет: правка тем же текстом активного
+     * (в том числе с вырезаемыми символами в конце — textSuffix), удаление удалённого, восстановление активного.
      *
-     * @return array<string, array{action: string, commentStatus: CommentStatus}>
+     * @return array<string, array{action: string, commentStatus: CommentStatus, textSuffix: string}>
      */
     private function noopActions(): array
     {
         return [
-            'правка без изменений' => ['action' => 'edit', 'commentStatus' => CommentStatus::Active],
-            'повторное удаление' => ['action' => 'delete', 'commentStatus' => CommentStatus::Deleted],
-            'повторное восстановление' => ['action' => 'restore', 'commentStatus' => CommentStatus::Active],
+            'правка без изменений' => ['action' => 'edit', 'commentStatus' => CommentStatus::Active, 'textSuffix' => ''],
+            'правка, совпавшая после очистки' => ['action' => 'edit', 'commentStatus' => CommentStatus::Active, 'textSuffix' => "\0\u{202E}\xFF"],
+            'повторное удаление' => ['action' => 'delete', 'commentStatus' => CommentStatus::Deleted, 'textSuffix' => ''],
+            'повторное восстановление' => ['action' => 'restore', 'commentStatus' => CommentStatus::Active, 'textSuffix' => ''],
         ];
     }
 

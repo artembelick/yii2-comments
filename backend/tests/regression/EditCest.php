@@ -85,6 +85,20 @@ final class EditCest
         ];
     }
 
+    /** REG-A-42: при 422 форма показывает текст уже очищенным, как у гостя (G-21) */
+    public function invalidTextIsShownCleaned(RegressionTester $I): void
+    {
+        $comment = $I->haveComment();
+        $tooLongAfterCleaning = str_repeat('ж', 2000) . "\u{202E}ж\0";
+        $I->amSignedInAs($I->haveAdmin());
+
+        $I->submitAdminForm(sprintf('/comments/%d/edit', $comment->id), ['text' => $tooLongAfterCleaning]);
+
+        $I->seeResponseCodeIs(422);
+        $I->seeFieldError('text.too_long');
+        $I->seeResponseContains('>' . str_repeat('ж', 2001) . '</textarea>');
+    }
+
     /**
      * REG-A-42: граничный допустимый текст → сохранён очищенным, как у гостя (G-15a, G-16, G-17, G-18)
      *

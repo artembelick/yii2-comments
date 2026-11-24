@@ -7,10 +7,19 @@ namespace common\tests\unit\text;
 use Codeception\Attribute\DataProvider;
 use Codeception\Test\Unit;
 use common\text\CommentTextNormalizer;
+use Override;
 use PHPUnit\Framework\Attributes\TestDox;
+use RuntimeException;
 
 final class CommentTextNormalizerTest extends Unit
 {
+    /** UNIT-NORM-10 занижает лимит PCRE: он глобальный для процесса и возвращается после каждого теста (ИЗ-4). */
+    #[Override]
+    protected function _after(): void
+    {
+        ini_restore('pcre.backtrack_limit');
+    }
+
     #[TestDox('UNIT-NORM-01: normalizeName обрезает по краям ASCII- и Unicode-пробелы и символы нулевой ширины')]
     #[DataProvider('paddedNames')]
     public function testNormalizeNameTrimsEdges(string $raw, string $expected): void
@@ -128,20 +137,35 @@ final class CommentTextNormalizerTest extends Unit
             '\\r' => ["Ян\rМария", 'Ян Мария'],
             'U+2028' => ["Ян\u{2028}Мария", 'Ян Мария'],
             'U+2029' => ["Ян\u{2029}Мария", 'Ян Мария'],
+            '\\r\\0\\n → два пробела: перенос распознаётся до вырезания' => ["Ян\r\0\nМария", 'Ян  Мария'],
         ];
     }
 
     #[TestDox('UNIT-NORM-07: табуляция в тексте → пробел, U+2028 и U+2029 → \\n')]
-    public function testTextTabsBecomeSpacesAndSeparatorsBecomeLineBreaks(): void
+    #[DataProvider('textBreaks')]
+    public function testTextTabsAndSeparatorsAreReplaced(string $raw, string $expected): void
     {
         $normalizer = new CommentTextNormalizer();
 
-        $text = $normalizer->normalizeText("первая\t\tстрока\u{2028}вторая\u{2029}третья");
+        $text = $normalizer->normalizeText($raw);
 
-        self::assertSame("первая  строка\nвторая\nтретья", $text);
+        self::assertSame($expected, $text);
     }
 
-    #[TestDox('UNIT-NORM-08: символы управления направлением текста вырезаются из имени и текста')]
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function textBreaks(): array
+    {
+        return [
+            'две табуляции → два пробела' => ["первая\t\tстрока", 'первая  строка'],
+            'U+2028' => ["первая\u{2028}вторая", "первая\nвторая"],
+            'U+2029' => ["первая\u{2029}вторая", "первая\nвторая"],
+            '\\r\\0\\n → два переноса: перенос распознаётся до вырезания' => ["первая\r\0\nвторая", "первая\n\nвторая"],
+        ];
+    }
+
+    #[TestDox('UNIT-NORM-08: символы и марки управления направлением текста вырезаются из имени и текста')]
     #[DataProvider('bidiCharacters')]
     public function testBidiControlsAreStripped(string $character): void
     {
@@ -170,6 +194,9 @@ final class CommentTextNormalizerTest extends Unit
             'RLI U+2067' => ["\u{2067}"],
             'FSI U+2068' => ["\u{2068}"],
             'PDI U+2069' => ["\u{2069}"],
+            'LRM U+200E' => ["\u{200E}"],
+            'RLM U+200F' => ["\u{200F}"],
+            'ALM U+061C' => ["\u{061C}"],
         ];
     }
 
@@ -195,5 +222,28 @@ final class CommentTextNormalizerTest extends Unit
             'VS16 U+FE0F' => ["Ян \u{2764}\u{FE0F}"],
             'эмодзи «семья»' => ["\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"],
         ];
+    }
+
+    #[TestDox('UNIT-NORM-09: эмодзи «семья» после нормализации остаётся 5 символами')]
+    public function testFamilyEmojiStaysFiveCharacters(): void
+    {
+        $normalizer = new CommentTextNormalizer();
+        $family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+
+        $name = $normalizer->normalizeName($family);
+
+        self::assertSame(5, mb_strlen($name));
+    }
+
+    #[TestDox('UNIT-NORM-10: сбой PCRE → исключение, а не пустая строка')]
+    public function testRegexFailureThrows(): void
+    {
+        $normalizer = new CommentTextNormalizer();
+        ini_set('pcre.backtrack_limit', '1000');
+        $manyInnerSpaces = 'Ян' . str_repeat(' ', 5000) . 'Мария';
+
+        $this->expectException(RuntimeException::class);
+
+        $normalizer->normalizeName($manyInnerSpaces);
     }
 }
