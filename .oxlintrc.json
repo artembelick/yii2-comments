@@ -33,6 +33,9 @@
     "no-duplicate-imports": ["error", { "allowSeparateTypeImports": true }],
     // 0, 1 и -1 — пустота, первый элемент и сдвиг на единицу, а не магические числа. Остальное — именованные константы.
     "no-magic-numbers": ["error", { "ignore": [0, 1, -1], "ignoreArrayIndexes": true, "ignoreDefaultValues": true }],
+    // typescript/no-floating-promises требует пометить промис, который намеренно не ждут, через void.
+    // Как оператор-выражение (`x = void y`) void по-прежнему запрещён.
+    "no-void": ["error", { "allowAsStatement": true }],
 
     // Порядок импортов задаёт oxfmt (sortImports). Правило ESLint сортирует по синтаксису импорта и спорит с ним.
     "sort-imports": "off",
@@ -88,7 +91,25 @@
       "files": ["**/__tests__/**", "e2e/tests/**"],
       "rules": {
         "no-magic-numbers": "off",
-        "max-lines-per-function": "off"
+        "max-lines-per-function": "off",
+        // Имя теста начинается с ID из тест-плана (ЧТ-1): `UNIT-JS-BO-01: …`. Остальное — строчными.
+        "vitest/prefer-lowercase-title": ["error", { "allowedPrefixes": ["UNIT-"] }]
+      }
+    },
+    {
+      // Entrypoint клиента админки: его работа — побочные эффекты на верхнем уровне модуля (связать модули и запустить).
+      "files": ["backend/web/js/main.js"],
+      "rules": {
+        "vitest/require-hook": "off"
+      }
+    },
+    {
+      // Провайдеры данных в Playwright: тесты объявляются forEach по наборам на верхнем уровне файла,
+      // так параметризует документация Playwright (test.each нет). Правила Vitest этого не знают.
+      "files": ["e2e/tests/**"],
+      "rules": {
+        "vitest/require-hook": "off",
+        "unicorn/no-array-for-each": "off"
       }
     },
     {

@@ -66,6 +66,6 @@
 - Seed Faker из ID теста для PHP-фикстур — срез 02 (UNIT-FIX-01, FIX-02). TS-часть есть в `e2e/support/faker.ts`.
 - `make admin` вызывает `./yii admin/create`, который появляется в срезе 02 (CLI-04). Там же `make check` начинает вызывать его перед smoke.
 
-Временные послабления, которые снимают следующие срезы: `--allow-empty` у `tools/checks` (срез 02), `--pass-with-no-tests` у Playwright (срез 04), заглушка `PlaceholderController` и UNIT-SKEL-01 (срезы 02 и 03).
+Временные послабления, которые снимают следующие срезы: `--allow-empty` у `tools/checks` (срез 02), `--pass-with-no-tests` у Playwright (срез 04 снял его везде, кроме `test-regression-ws-exclusive`: в этом ярусе только WS-06 и WS-07, они приходят со срезом 05, и флаг снимает он), заглушка `PlaceholderController` и UNIT-SKEL-01 (срезы 02 и 03).
 
 Отклонение от плана: «правило линтера требует `expect.hasAssertions()`» заменено на `expect.requireAssertions` в конфиге Vitest, строгость PHPUnit поверх Codeception — на `tools/checks junit`. `docs/test-plans/README.md` поправлен.

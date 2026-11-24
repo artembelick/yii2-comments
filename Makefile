@@ -24,9 +24,9 @@ PHP_STAND := $(STAND) exec -T php
 # Docker Desktop на macOS права в bind mount не проверяет, поэтому локально это не видно.
 # Как yii init в шаблонах Yii: web/assets открыт на запись после подъёма стенда.
 CHMOD_WEB_ASSETS := chmod 0777 frontend/web/assets backend/web/assets
-# Пустые проекты Playwright не падают, пока в них нет тестов: smoke и e2e-parallel заполняет срез 02,
-# REG-WS — срез 04. Срез 04 убирает флаг: проект без тестов значит сломанный testDir.
-PLAYWRIGHT := $(STAND) run --rm -T playwright npx playwright test --pass-with-no-tests
+# Проект Playwright без тестов — это сломанный testDir, и прогон падает. Пустой шард CI не в счёт:
+# Playwright считает тесты до разбиения на шарды.
+PLAYWRIGHT := $(STAND) run --rm -T playwright npx playwright test
 
 CODECEPT_SEED := $(if $(SEED),--seed $(SEED),)
 CODECEPT_SHARD := $(if $(SHARD),--shard $(SHARD),)
@@ -156,8 +156,9 @@ test-regression-exclusive:
 test-regression-ws-parallel:
 	$(PLAYWRIGHT) --project=regression-ws-parallel $(PLAYWRIGHT_SHARD)
 
+# Единственное оставшееся послабление: ярус exclusive у REG-WS (WS-06, WS-07) заполняет срез 05, он же убирает флаг.
 test-regression-ws-exclusive:
-	$(PLAYWRIGHT) --project=regression-ws-exclusive
+	$(PLAYWRIGHT) --project=regression-ws-exclusive --pass-with-no-tests
 
 test-e2e: test-e2e-parallel test-e2e-exclusive ## E2E (Playwright): сначала parallel, затем exclusive
 

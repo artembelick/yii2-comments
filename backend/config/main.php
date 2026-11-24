@@ -15,6 +15,10 @@ return [
     'basePath' => dirname(__DIR__),
     'controllerNamespace' => 'backend\controllers',
     'defaultRoute' => 'comment/index',
+    'params' => [
+        // Адрес WS для браузера: nginx проксирует /ws на хосте админки. http → ws, https → wss.
+        'wsUrl' => 'ws' . substr($env('ADMIN_URL'), strlen('http')) . '/ws',
+    ],
     'components' => [
         'request' => [
             'cookieValidationKey' => $env('BACKEND_COOKIE_KEY'),
@@ -41,6 +45,8 @@ return [
                 '' => 'comment/index',
                 'login' => 'auth/login',
                 'logout' => 'auth/logout',
+                // Без ограничения метода в правиле: GET доходит до VerbFilter и получает 405, а не 404.
+                'api/ws-token' => 'ws-token/create',
             ],
         ],
         'log' => [

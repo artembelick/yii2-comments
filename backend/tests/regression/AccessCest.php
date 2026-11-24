@@ -41,4 +41,33 @@ final class AccessCest
             '«Удалённые»' => ['url' => '/?status=deleted'],
         ];
     }
+
+    /**
+     * REG-A-21: без входа JSON-эндпоинт → 401, а не редирект
+     *
+     * @param Example<string, mixed> $example
+     */
+    #[DataProvider('jsonEndpoints')]
+    public function guestGetsUnauthorizedOnJson(RegressionTester $I, Example $example): void
+    {
+        $I->stopFollowingRedirects();
+
+        $I->send(Examples::string($example, 'method'), Examples::string($example, 'url'));
+
+        $I->seeResponseCodeIs(401);
+        $I->seeResponseContainsJson(['error' => 'unauthorized']);
+        $I->dontSeeHttpHeader('Location');
+    }
+
+    /**
+     * JSON-эндпоинты админки, которые есть на этом срезе. JSON-список добавляет срез 05.
+     *
+     * @return array<string, array{method: string, url: string}>
+     */
+    private function jsonEndpoints(): array
+    {
+        return [
+            'токен WS' => ['method' => 'POST', 'url' => '/api/ws-token'],
+        ];
+    }
 }

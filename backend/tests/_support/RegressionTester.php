@@ -50,6 +50,18 @@ final class RegressionTester extends Actor
     }
 
     /**
+     * POST /api/ws-token вошедшим админом (CSRF-заголовок ставит тест): ответ 200, токен из JSON.
+     */
+    public function issueWsToken(): string
+    {
+        $this->sendPost('/api/ws-token');
+        $this->seeResponseCodeIs(200);
+        $token = $this->grabDataFromResponseByJsonPath('$.token');
+
+        return is_string($token[0] ?? null) ? $token[0] : '';
+    }
+
+    /**
      * Тексты комментариев в строках списка на странице, сверху вниз.
      *
      * @return list<string>

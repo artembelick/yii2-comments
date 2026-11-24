@@ -18,5 +18,6 @@
 
 **Готово, когда:**
 - [ ] Перечисленные тесты зелёные, тесты срезов 02–04 остаются зелёными, покрытие 100%
+- [ ] Флаг `--pass-with-no-tests` у `test-regression-ws-exclusive` в Makefile убран: в ярусе exclusive REG-WS появились WS-06 и WS-07
 - [ ] `make check` и CI полностью зелёные
 - [ ] `/code-review` среза пройден

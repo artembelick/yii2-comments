@@ -41,6 +41,20 @@ final readonly class YiiRedisClient implements RedisClientInterface
         $this->execute('DEL', [$key]);
     }
 
+    #[Override]
+    public function setNxEx(string $key, string $value, int $ttlSeconds): void
+    {
+        $this->execute('SET', [$key, $value, 'NX', 'EX', $ttlSeconds]);
+    }
+
+    #[Override]
+    public function getDel(string $key): ?string
+    {
+        $value = $this->execute('GETDEL', [$key]);
+
+        return is_string($value) ? $value : null;
+    }
+
     /**
      * @param list<int|string> $params
      */

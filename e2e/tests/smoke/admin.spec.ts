@@ -1,3 +1,4 @@
+import { logIn } from "../../support/admin.ts";
 import { requireEnv } from "../../support/env.ts";
 import { message } from "../../support/messages.ts";
 import { expect, test } from "../../support/test.ts";
@@ -23,4 +24,15 @@ test("SMOKE-03: админ для smoke входит и видит список 
 
   await expect(page.getByRole("heading", { name: message("admin.title") })).toBeVisible();
   await expect(page.getByRole("link", { name: message("admin.tab.active") })).toHaveAttribute("aria-current", "page");
+});
+
+test("SMOKE-04: на списке после входа индикатор WS переходит в «онлайн» за 5 секунд", async ({ page }) => {
+  await logIn(page.request, {
+    username: requireEnv("SMOKE_ADMIN_LOGIN"),
+    password: requireEnv("SMOKE_ADMIN_PASSWORD"),
+  });
+
+  await page.goto(requireEnv("ADMIN_URL"));
+
+  await expect(page.getByRole("status", { name: message("ws.status.label") })).toHaveText(message("ws.status.online"));
 });

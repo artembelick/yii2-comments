@@ -287,7 +287,7 @@ public function reset(string $key): void
 
 ### `common\redis\RedisClientInterface` и `YiiRedisClient`
 
-Адаптер над `yiisoft/yii2-redis`: код зависит от интерфейса, unit-тесты мокают его, а не компонент. Набор команд растёт вместе с потребителями (INCR, EXPIRE, GET, DEL — для лимита).
+Адаптер над `yiisoft/yii2-redis`: код зависит от интерфейса, unit-тесты мокают его, а не компонент. Набор команд растёт вместе с потребителями (INCR, EXPIRE, GET, DEL — для лимита; SET NX EX и GETDEL — для токена WS).
 
 | ID | Поведение (мок `yii\redis\Connection`) |
 |---|---|
@@ -479,9 +479,11 @@ public function changePassword(string $username, string $password): void
 ### Интерфейсы, которые реализует `ws/runtime`
 
 ```php
-interface ConnectionInterface { public function id(): string; public function send(array $message): void; public function close(int $code): void; }
+interface ConnectionInterface { public function id(): string; public function send(array $message): void; public function close(int $code): void; public function reject(): void; }
 interface TimerInterface      { public function after(float $seconds, callable $fn): int; public function cancel(int $timerId): void; }
 ```
+
+`reject()` отвечает на handshake HTTP 403: Workerman отдаёт `Origin` только в момент handshake, поэтому проверка Origin живёт в `MessageHandler::onConnect`, а не в отдельном слое runtime с ветвлением.
 
 ### `ws\ConnectionRegistry`
 
@@ -529,22 +531,26 @@ public function isActive(int $userId): bool
 ### `ws\MessageHandler`
 
 ```php
-public function onConnect(ConnectionInterface $c): void
+public function __construct(ConnectionRegistry $registry, WsTokenService $tokens, ActiveAdminChecker $admins, TimerInterface $timer, OriginPolicy $origins)
+public function onConnect(ConnectionInterface $c, ?string $origin): void
 public function onMessage(ConnectionInterface $c, string $raw): void
 public function onClose(ConnectionInterface $c): void
 ```
 
-| ID | Поведение (моки: Registry, TokenService, ActiveAdminChecker, Timer, Clock) |
+Реестр, `WsTokenService` и `ActiveAdminChecker` в тестах настоящие (классы final, как `CommentService` в разделе FC): мокаются их границы — Redis, репозиторий админов и соединение с БД. Соединение и таймер — фейки из `ws/tests/_support`: тест видит отправленные сообщения, код закрытия и запланированные задержки без реального времени. Часы не нужны: время задают только таймеры.
+
+| ID | Поведение (фейки: соединение, таймер; моки: Redis, репозиторий админов) |
 |---|---|
-| UNIT-MH-01 | `onConnect` добавляет соединение в реестр и ставит таймер авторизации на 5 секунд |
+| UNIT-MH-01 | `onConnect` добавляет соединение в реестр и ставит таймер авторизации на 5 секунд и таймер тишины на 60 |
 | UNIT-MH-02 | Таймер сработал, а соединение не авторизовано → `close(4401)` |
 | UNIT-MH-03 | Верный `auth` → `consume`, проверка активности, `authenticate`, отмена таймера авторизации, отправка `{type: "auth.ok"}` |
 | UNIT-MH-04 | Провайдер: `consume` вернул null; админ не активен → `close(4401)` |
-| UNIT-MH-05 | `AdminCheckUnavailableException` → `close(1011)` |
-| UNIT-MH-06 | Провайдер нарушений протокола: больше 4096 байт, не JSON, JSON без `type`, неизвестный `type`, `ping` до авторизации, повторный `auth` → `close(4400)` |
+| UNIT-MH-05 | Провайдер: `AdminCheckUnavailableException`, Redis недоступен при `consume` → `close(1011)` |
+| UNIT-MH-06 | Провайдер нарушений протокола: больше 4096 байт, не JSON, JSON не объект, JSON без `type`, `type` не строка, неизвестный `type`, `ping` до авторизации, повторный `auth` → `close(4400)`. Ровно 4096 байт — не нарушение |
 | UNIT-MH-07 | `ping` после авторизации → `{type: "pong"}` |
-| UNIT-MH-08 | Каждое входящее сообщение переставляет таймер тишины на 60 секунд. Таймер сработал → `close(1001)` |
-| UNIT-MH-09 | `onClose` удаляет соединение из реестра и отменяет оба таймера |
+| UNIT-MH-08 | Каждое входящее сообщение отменяет таймер тишины и ставит новый на 60 секунд. Таймер сработал → `close(1001)` |
+| UNIT-MH-09 | `onClose` удаляет соединение из реестра и отменяет его таймеры; для отклонённого handshake ничего не ломает |
+| UNIT-MH-10 | `onConnect` с `Origin`, который не пропускает `OriginPolicy` → `reject()` (HTTP 403), соединение не в реестре, таймеров нет |
 
 ### `ws\RedisDispatcher`
 
@@ -571,7 +577,7 @@ public function dispatch(string $channel, string $payload): void
 - Все зависимости передаются в фабрики, глобалов нет: `WebSocket`, `fetch`, таймеры, `location`.
 - Время подменяется через `vi.useFakeTimers()`.
 
-**Исключение из покрытия:** только `main.js`. Он читает data-атрибуты страницы и связывает модули между собой. Ветвлений в нём нет, и это проверяет тот же линтер, что и `ws/runtime/`.
+**Исключение из покрытия:** только `main.js`. Он связывает модули между собой, а настройки страницы читает через `page.js`. Ветвлений в нём нет, и это проверяет тот же линтер, что и `ws/runtime/`.
 
 **Как показывается текст:**
 - Текст комментария выводится как обычный экранированный текст со стилем `white-space: pre-line`, и в ленте, и в админке.
@@ -592,6 +598,11 @@ export function createBackoff({ baseMs = 1000, maxMs = 30000 } = {}) // → { ne
 
 ```js
 export function createApi({ fetchImpl, csrfToken, baseUrl }) // → { fetchToken(): Promise<string>, fetchList(status, page): Promise<Page> }
+```
+
+Ошибки лежат в своих модулях (`unauthorized-error.js`, `unavailable-error.js`, `page-markup-error.js`): линтер допускает один класс на файл.
+
+```js
 export class UnauthorizedError extends Error {}
 export class UnavailableError extends Error {}
 ```
@@ -601,7 +612,7 @@ export class UnavailableError extends Error {}
 | UNIT-JS-API-01 | `fetchToken` отправляет POST `/api/ws-token` с заголовком `X-CSRF-Token` и `credentials: 'same-origin'`, возвращает `token` |
 | UNIT-JS-API-02 | `fetchList` отправляет GET `/api/comments?status=…&page=…` и возвращает разобранный JSON |
 | UNIT-JS-API-03 | Ответ 401 → `UnauthorizedError` |
-| UNIT-JS-API-04 | Провайдер: 5xx, сетевая ошибка, невалидный JSON → `UnavailableError` |
+| UNIT-JS-API-04 | Провайдер: 5xx, сетевая ошибка, невалидный JSON, JSON без строкового `token` → `UnavailableError` |
 
 ### `format.js`
 
@@ -645,6 +656,19 @@ export function createCommentList({ tbody, view: { status, page, perPage }, rend
 | UNIT-JS-LIST-07 | `replaceAll` перерисовывает tbody целиком и скрывает баннер |
 | UNIT-JS-LIST-08 | Пустая таблица после удаления последней строки → показывается текст пустого состояния вкладки |
 
+### `page.js`
+
+```js
+export function readPage(document) // → { wsUrl, loginUrl, csrfToken, indicator, statusTexts }
+```
+
+Настройки клиента сервер кладёт в разметку списка: адрес WS и адрес логина в data-атрибутах блока заголовка, тексты индикатора в data-атрибутах самого индикатора, CSRF-токен в meta. Чтение вынесено из `main.js`: проверка, что всё на месте, — это ветвления, а `main.js` их не допускает.
+
+| ID | Поведение |
+|---|---|
+| UNIT-JS-PAGE-01 | Адрес WS, адрес логина, CSRF-токен, элемент индикатора и три текста состояний берутся из разметки |
+| UNIT-JS-PAGE-02 | Провайдер: нет блока с адресом WS, нет индикатора, нет CSRF-токена, нет адреса логина, нет текста состояния → ошибка |
+
 ### `status-indicator.js`
 
 | ID | Поведение |
@@ -657,14 +681,16 @@ export function createCommentList({ tbody, view: { status, page, perPage }, rend
 export function createWsClient({ url, api, backoff, WebSocketImpl, timers, onEvent, onStatus, onReconnected, navigateToLogin }) // → { start(), stop() }
 ```
 
+`onEvent` и `onReconnected` появляются со срезом 05 (JS-WS-03, JS-WS-08), закрытие 4403 — со срезом 07 (JS-WS-04). До них любой код закрытия — разрыв с переподключением.
+
 | ID | Поведение (фейковый WebSocket, мок api, фейковые таймеры) |
 |---|---|
 | UNIT-JS-WS-01 | `start` берёт токен, открывает соединение, после `open` отправляет `{type: "auth", token}` и показывает статус `reconnecting` до `auth.ok` |
-| UNIT-JS-WS-02 | `auth.ok` → статус `online`, `backoff.reset()`, ping каждые 25 секунд |
+| UNIT-JS-WS-02 | `auth.ok` → статус `online`, `backoff.reset()`, ping каждые 25 секунд. Провайдер других сообщений (`pong`, не объект, без `type`, не JSON) статус не меняет |
 | UNIT-JS-WS-03 | Событие `comment.*` → `onEvent(event)`; `pong` и неизвестный `type` событием не считаются |
 | UNIT-JS-WS-04 | Закрытие с 4403 → статус `offline`, `navigateToLogin()`, переподключения нет |
-| UNIT-JS-WS-05 | Провайдер кодов 4400, 4401, 1011, 1001, 1006 → статус `reconnecting`, пауза `backoff.next()`, новый токен, новое соединение |
+| UNIT-JS-WS-05 | Провайдер кодов 4400, 4401, 1011, 1001, 1006 → статус `reconnecting`, пауза `backoff.next()`, новый токен, новое соединение. Ping разорванного соединения больше не уходит |
 | UNIT-JS-WS-06 | Новый токен не выдали (`UnauthorizedError`) → `navigateToLogin()` |
 | UNIT-JS-WS-07 | `UnavailableError` при получении токена → следующая попытка снова через backoff |
 | UNIT-JS-WS-08 | Первый `auth.ok` после переподключения → `onReconnected()` (страница перечитывается). При первом подключении не вызывается |
-| UNIT-JS-WS-09 | `stop` закрывает соединение, отменяет ping и запланированные попытки, переподключения нет |
+| UNIT-JS-WS-09 | `stop` закрывает соединение, отменяет ping и запланированные попытки, переподключения нет. `stop` во время запроса токена: соединение после ответа не открывается, отказ (503) новую попытку не планирует |

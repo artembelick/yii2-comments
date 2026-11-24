@@ -3,7 +3,7 @@
     "target": "es2023",
     "module": "nodenext",
     "moduleResolution": "nodenext",
-    "lib": ["es2023", "dom", "dom.iterable"],
+    "lib": ["es2023", "es2024.promise", "dom", "dom.iterable"],
     "types": ["node"],
     "allowJs": true,
     "checkJs": true,

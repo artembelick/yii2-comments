@@ -7,6 +7,7 @@ use common\repositories\CommentStatus;
 use yii\bootstrap5\Html;
 use yii\bootstrap5\LinkPager;
 use yii\data\Pagination;
+use yii\helpers\Url;
 
 /** @var yii\web\View $this */
 /** @var CommentStatus $status */
@@ -17,6 +18,9 @@ $tabs = [
     CommentStatus::Active->value => Yii::t('app', 'admin.tab.active'),
     CommentStatus::Deleted->value => Yii::t('app', 'admin.tab.deleted'),
 ];
+/** @var string $wsUrl адрес из params, см. backend/config/main.php */
+$wsUrl = Yii::$app->params['wsUrl'];
+$this->registerJsFile('@web/js/main.js', ['type' => 'module']);
 $pagination = new Pagination([
     'totalCount' => $page->totalCount,
     'pageSize' => backend\controllers\CommentController::PER_PAGE,
@@ -25,7 +29,17 @@ $pagination = new Pagination([
     'params' => ['status' => $status->value],
 ]);
 ?>
-<h1 class="h3 mb-3"><?= Html::encode($this->title) ?></h1>
+<div class="d-flex align-items-center justify-content-between mb-3"
+     data-ws-url="<?= Html::encode($wsUrl) ?>"
+     data-login-url="<?= Html::encode(Url::to(['auth/login'])) ?>">
+    <h1 class="h3 mb-0"><?= Html::encode($this->title) ?></h1>
+    <?php // Без JS индикатор честно показывает «Отключено»: соединение открывает main.js.?>
+    <span class="ws-status" role="status" aria-label="<?= Html::encode(Yii::t('app', 'ws.status.label')) ?>"
+          data-ws-status data-state="offline"
+          data-text-online="<?= Html::encode(Yii::t('app', 'ws.status.online')) ?>"
+          data-text-reconnecting="<?= Html::encode(Yii::t('app', 'ws.status.reconnecting')) ?>"
+          data-text-offline="<?= Html::encode(Yii::t('app', 'ws.status.offline')) ?>"><?= Html::encode(Yii::t('app', 'ws.status.offline')) ?></span>
+</div>
 
 <ul class="nav nav-tabs mb-3">
     <?php foreach ($tabs as $value => $label): ?>

@@ -17,4 +17,10 @@ interface RedisClientInterface
     public function get(string $key): ?string;
 
     public function del(string $key): void;
+
+    /** SET NX EX: записывает значение с TTL, только если ключа ещё нет. */
+    public function setNxEx(string $key, string $value, int $ttlSeconds): void;
+
+    /** GETDEL: читает значение и удаляет ключ одной командой. Ключа нет — null. */
+    public function getDel(string $key): ?string;
 }
