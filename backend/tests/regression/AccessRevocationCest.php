@@ -69,7 +69,7 @@ final class AccessRevocationCest
         $I->seeResponseCodeIs(401);
     }
 
-    /** REG-A-09d: А вошёл, его блокируют и сразу разблокируют, в старую сессию между ними никто не заходил → она уходит на логин */
+    /** REG-A-09d: Админ 1 вошёл, его блокируют и сразу разблокируют, в старую сессию между ними никто не заходил → она уходит на логин */
     public function sessionStaysEndedAfterUnblock(RegressionTester $I): void
     {
         $admin = $I->haveAdmin();

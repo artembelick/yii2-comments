@@ -1,57 +1,61 @@
-import { openAdminPage } from "../../../support/admin.ts";
+import { listRow, openAdminPage } from "../../../support/admin.ts";
 import { admin, comment } from "../../../support/factories.ts";
 import { message } from "../../../support/messages.ts";
 import { expect, test } from "../../../support/test.ts";
 
-test("E2E-04: восстановление видно второму админу и гостю", async ({ page, otherAdmin, guest, db, faker }) => {
-  const adminA = await admin(db, faker);
-  const adminB = await admin(db, faker);
-  // Даты создания по порядку: К0 старше К1, К2 новее. Восстановленный К1 встаёт между ними.
-  const k0 = await comment(db, faker);
-  const k1 = await comment(db, faker, { deletedBy: adminB.id });
-  const k2 = await comment(db, faker);
-  const deletedByB = message("admin.audit.deleted").replace("{login}", adminB.username);
-  await openAdminPage(page, adminA, "/?status=deleted");
-  await openAdminPage(otherAdmin, adminB);
+test("E2E-04: восстановление видно второму админу и гостю", async ({
+  page: admin1Page,
+  admin2Page,
+  guest,
+  db,
+  faker,
+}) => {
+  const admin1 = await admin(db, faker);
+  const admin2 = await admin(db, faker);
+  // Фабрика ставит даты по порядку создания: восстановленный встаёт между старшим и младшим.
+  const olderComment = await comment(db, faker);
+  const restoredComment = await comment(db, faker, { deletedBy: admin2.id });
+  const newerComment = await comment(db, faker);
+  const deletedByAdmin2 = message("admin.audit.deleted").replace("{login}", admin2.username);
+  await openAdminPage(admin1Page, admin1, "/?status=deleted");
+  await openAdminPage(admin2Page, admin2);
 
-  await test.step("1. А восстанавливает К1 → К1 пропал из «Удалённых» у А", async () => {
+  await test.step("1. Админ 1 восстанавливает комментарий → он пропал из «Удалённых» у Админа 1", async () => {
     const dialogs: string[] = [];
-    page.once("dialog", (dialog) => {
+    admin1Page.once("dialog", (dialog) => {
       dialogs.push(dialog.message());
       void dialog.accept();
     });
 
-    await page
-      .getByRole("row")
-      .filter({ hasText: k1.text })
+    await listRow(admin1Page, restoredComment.text)
       .getByRole("button", { name: message("admin.action.restore") })
       .click();
 
-    await expect(page.getByText(message("admin.restored"))).toBeVisible();
+    await expect(admin1Page.getByText(message("admin.restored"))).toBeVisible();
     expect(dialogs).toStrictEqual([message("admin.confirm.restore")]);
-    await expect(page.getByRole("link", { name: message("admin.tab.deleted") })).toHaveAttribute(
+    await expect(admin1Page.getByRole("link", { name: message("admin.tab.deleted") })).toHaveAttribute(
       "aria-current",
       "page",
     );
-    await expect(page.getByRole("row").filter({ hasText: k1.text })).toHaveCount(0);
+    await expect(listRow(admin1Page, restoredComment.text)).toHaveCount(0);
   });
 
-  await test.step("2. У Б К1 вживую появился в «Активных» между К2 и К0, без «удалил»", async () => {
-    const rows = otherAdmin.getByRole("row");
+  await test.step("2. У Админа 2 комментарий вживую появился в «Активных» между младшим и старшим, без «удалил»", async () => {
+    const rows = admin2Page.getByRole("table").getByRole("row");
 
-    await expect(rows.nth(2)).toContainText(k1.text);
-    await expect(rows.nth(1)).toContainText(k2.text);
-    await expect(rows.nth(3)).toContainText(k0.text);
-    await expect(rows.nth(2)).not.toContainText(deletedByB);
+    await expect(rows.nth(1)).toContainText(newerComment.text);
+    await expect(rows.nth(2)).toContainText(restoredComment.text);
+    await expect(rows.nth(3)).toContainText(olderComment.text);
+    await expect(rows.nth(2)).not.toContainText(deletedByAdmin2);
   });
 
-  await test.step("3. Гость перезагружает ленту → К1 снова на своём месте с прежним текстом", async () => {
+  await test.step("3. Гость перезагружает ленту → комментарий снова между младшим и старшим, с прежним текстом", async () => {
     const items = guest.getByRole("region", { name: message("feed.title") }).getByRole("listitem");
 
     await guest.goto("/");
 
-    await expect(items.nth(0)).toContainText(k2.text);
-    await expect(items.nth(1)).toContainText(k1.text);
-    await expect(items.nth(2)).toContainText(k0.text);
+    await expect(items.nth(0)).toContainText(newerComment.text);
+    await expect(items.nth(1)).toContainText(restoredComment.text);
+    await expect(items.nth(2)).toContainText(olderComment.text);
   });
 });

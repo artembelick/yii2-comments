@@ -35,19 +35,19 @@ final class EditCest
         $I->dontSeeElement('[name="name"]');
     }
 
-    /** REG-A-41: валидный новый текст → 302 в список и флэш, текст, updated_at и updated_by = А изменились, имя прежнее */
+    /** REG-A-41: валидный новый текст → 302 в список и флэш, текст, updated_at и updated_by = Админ 1 изменились, имя прежнее */
     public function newTextIsSaved(RegressionTester $I): void
     {
-        $adminA = $I->haveAdmin();
+        $admin1 = $I->haveAdmin();
         $comment = $I->haveComment();
         $newText = 'Новый текст ' . $I->fixtureFactory()->tag();
-        $I->amSignedInAs($adminA);
+        $I->amSignedInAs($admin1);
 
         $I->submitAdminForm(sprintf('/comments/%d/edit', $comment->id), ['text' => $newText]);
 
         $I->followRedirectAndSeeFlash('/', 'admin.updated');
         $I->assertSame(
-            ['author' => $comment->author, 'text' => $newText, 'updated_by' => $adminA->id],
+            ['author' => $comment->author, 'text' => $newText, 'updated_by' => $admin1->id],
             $I->grabCommentColumns($comment->id, ['author', 'text', 'updated_by']),
         );
         $I->assertNotNull($I->grabCommentColumns($comment->id, ['updated_at'])['updated_at']);
@@ -236,23 +236,23 @@ final class EditCest
         $I->assertSame(['updated_at' => null, 'updated_by' => null], $I->grabCommentColumns($comment->id, ['updated_at', 'updated_by']));
     }
 
-    /** REG-A-47: А сохранил Т1, затем Б сохраняет Т2 по той же форме → сохранён Т2, updated_by = Б */
+    /** REG-A-47: Админ 1 сохранил свой текст, затем Админ 2 сохраняет другой по той же форме → сохранён текст Админа 2, updated_by = Админ 2 */
     public function laterSaveWins(RegressionTester $I): void
     {
-        $adminA = $I->haveAdmin();
-        $adminB = $I->haveAdmin();
-        $savedByA = $I->haveComment([
-            'text' => 'Текст А ' . $I->fixtureFactory()->tag(),
+        $admin1 = $I->haveAdmin();
+        $admin2 = $I->haveAdmin();
+        $savedByAdmin1 = $I->haveComment([
+            'text' => 'Текст Админа 1 ' . $I->fixtureFactory()->tag(),
             'updated_at' => self::UPDATED_AT,
-            'updated_by' => $adminA->id,
+            'updated_by' => $admin1->id,
         ]);
-        $textB = 'Текст Б ' . $I->fixtureFactory()->tag();
-        $I->amSignedInAs($adminB);
+        $admin2Text = 'Текст Админа 2 ' . $I->fixtureFactory()->tag();
+        $I->amSignedInAs($admin2);
 
-        $I->submitAdminForm(sprintf('/comments/%d/edit', $savedByA->id), ['text' => $textB]);
+        $I->submitAdminForm(sprintf('/comments/%d/edit', $savedByAdmin1->id), ['text' => $admin2Text]);
 
         $I->seeResponseCodeIs(302);
-        $I->assertSame(['text' => $textB, 'updated_by' => $adminB->id], $I->grabCommentColumns($savedByA->id, ['text', 'updated_by']));
+        $I->assertSame(['text' => $admin2Text, 'updated_by' => $admin2->id], $I->grabCommentColumns($savedByAdmin1->id, ['text', 'updated_by']));
     }
 
     /** REG-A-48: сохранение без CSRF → 400, данные не изменились */

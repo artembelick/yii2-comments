@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test";
-import type { APIRequestContext, Page } from "@playwright/test";
+import type { APIRequestContext, Locator, Page } from "@playwright/test";
 
 import { requireEnv } from "./env.ts";
 import { message } from "./messages.ts";
@@ -89,4 +89,9 @@ export async function openAdminPage(page: Page, credentials: Credentials, path =
   await logIn(page.request, credentials);
   await page.goto(`${requireEnv("ADMIN_URL")}${path}`);
   await expect(page.getByRole("status", { name: message("ws.status.label") })).toHaveText(message("ws.status.online"));
+}
+
+/** Строка списка админки, в которой есть этот текст. В тексте комментария из фабрики уникальная метка, поэтому строка одна. */
+export function listRow(page: Page, text: string): Locator {
+  return page.getByRole("table").getByRole("row").filter({ hasText: text });
 }

@@ -159,15 +159,15 @@ final class LoginCest
         $I->seeResponseCodeIs(302);
     }
 
-    /** REG-A-08b: 5 неудач для А не мешают войти Б с того же IP */
+    /** REG-A-08b: 5 неудач для Админа 1 не мешают войти Админу 2 с того же IP */
     public function limitIsPerUsername(RegressionTester $I): void
     {
-        $adminA = $I->haveAdmin();
-        $adminB = $I->haveAdmin();
-        $I->failLogin($adminA->username, 5);
+        $admin1 = $I->haveAdmin();
+        $admin2 = $I->haveAdmin();
+        $I->failLogin($admin1->username, 5);
         $I->stopFollowingRedirects();
 
-        $I->submitLogin($adminB->username, FixtureFactory::ADMIN_PASSWORD);
+        $I->submitLogin($admin2->username, FixtureFactory::ADMIN_PASSWORD);
 
         $I->seeResponseCodeIs(302);
     }
@@ -183,7 +183,7 @@ final class LoginCest
         $I->see(Yii::t('app', 'login.invalid'));
     }
 
-    /** REG-A-09b: вошедшего А блокируют консольной командой → следующий запрос А уходит на логин */
+    /** REG-A-09b: вошедшего Админа 1 блокируют консольной командой → его следующий запрос уходит на логин */
     public function blockedAdminLosesSession(RegressionTester $I): void
     {
         $admin = $I->haveAdmin();
@@ -197,7 +197,7 @@ final class LoginCest
         $I->seeHttpHeader('Location', self::LOGIN_URL);
     }
 
-    /** REG-A-09c: А вошёл, admin/password меняет ему пароль → старая сессия уходит на логин */
+    /** REG-A-09c: Админ 1 вошёл, admin/password меняет ему пароль → старая сессия уходит на логин */
     public function passwordChangeEndsOldSession(RegressionTester $I): void
     {
         $admin = $I->haveAdmin();

@@ -35,15 +35,15 @@ final class CommentListCest
         $I->assertSame([], array_values(array_intersect($newestActiveFirst, $pages['deleted1'])));
     }
 
-    /** REG-A-31: в строке изменённого А комментария «изменил: А», удалённого Б — «удалил: Б» */
+    /** REG-A-31: у комментария, изменённого Админом 1, «изменил: <его логин>», у удалённого Админом 2 — «удалил: <его логин>» */
     #[Group('exclusive')]
     public function rowsShowWhoChangedAndDeleted(RegressionTester $I): void
     {
-        $adminA = $I->haveAdmin();
-        $adminB = $I->haveAdmin();
-        $updated = $I->haveComment(['updated_at' => new Expression('now()'), 'updated_by' => $adminA->id]);
-        $deleted = $I->haveComment(['deleted_at' => new Expression('now()'), 'deleted_by' => $adminB->id]);
-        $I->amSignedInAs($adminA);
+        $admin1 = $I->haveAdmin();
+        $admin2 = $I->haveAdmin();
+        $updated = $I->haveComment(['updated_at' => new Expression('now()'), 'updated_by' => $admin1->id]);
+        $deleted = $I->haveComment(['deleted_at' => new Expression('now()'), 'deleted_by' => $admin2->id]);
+        $I->amSignedInAs($admin1);
 
         $audits = [
             'active' => $I->grabAuditOf('/', $updated->text),
@@ -51,8 +51,8 @@ final class CommentListCest
         ];
 
         $I->assertSame([
-            'active' => Yii::t('app', 'admin.audit.updated', ['login' => $adminA->username]),
-            'deleted' => Yii::t('app', 'admin.audit.deleted', ['login' => $adminB->username]),
+            'active' => Yii::t('app', 'admin.audit.updated', ['login' => $admin1->username]),
+            'deleted' => Yii::t('app', 'admin.audit.deleted', ['login' => $admin2->username]),
         ], $audits);
     }
 

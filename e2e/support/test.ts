@@ -18,8 +18,11 @@ interface TestFixtures {
   faker: Faker;
   /** Гость в своём browser context (БР-2) на публичной части. Счётчики лимита перед тестом сброшены. */
   guest: Page;
-  /** Второй админ (Б) в своём browser context (БР-2): пустая страница, вход через `logIn(otherAdmin.request, …)`. */
-  otherAdmin: Page;
+  /**
+   * Страница Админа 2 в своём browser context (БР-2): пустая, вход через `openAdminPage(admin2Page, …)`.
+   * Админ 1 работает во встроенной `page`: в тестах она переименована в `admin1Page`.
+   */
+  admin2Page: Page;
   /** HTTP-клиент гостя без браузера для REG-WS: отправляет форму через postComment. Счётчики лимита сброшены. */
   guestApi: APIRequestContext;
   /** Свежий админ из фабрики, которым вошёл `adminApi`. */
@@ -51,7 +54,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     await use(await context.newPage());
     await context.close();
   },
-  otherAdmin: async ({ browser }, use) => {
+  admin2Page: async ({ browser }, use) => {
     const context = await browser.newContext({ baseURL: requireEnv("ADMIN_URL") });
     await use(await context.newPage());
     await context.close();

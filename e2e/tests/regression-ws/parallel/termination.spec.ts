@@ -15,21 +15,21 @@ test("REG-WS-08: logout сессии 1 → закрыто только соед�
   faker,
 }) => {
   const session2 = await signIn(adminAccount);
-  const boris = await signIn(await admin(db, faker));
-  const annaSession1 = await ws.openAuthenticated(await issueWsToken(adminApi));
-  const annaSession2 = await ws.openAuthenticated(await issueWsToken(session2));
-  const borisSocket = await ws.openAuthenticated(await issueWsToken(boris));
+  const admin2 = await signIn(await admin(db, faker));
+  const admin1Session1 = await ws.openAuthenticated(await issueWsToken(adminApi));
+  const admin1Session2 = await ws.openAuthenticated(await issueWsToken(session2));
+  const admin2Socket = await ws.openAuthenticated(await issueWsToken(admin2));
 
   await logOut(adminApi);
 
-  expect([await annaSession1.closeCode(), await annaSession2.isAlive(), await borisSocket.isAlive()]).toStrictEqual([
-    SESSION_ENDED,
-    true,
-    true,
-  ]);
+  expect([
+    await admin1Session1.closeCode(),
+    await admin1Session2.isAlive(),
+    await admin2Socket.isAlive(),
+  ]).toStrictEqual([SESSION_ENDED, true, true]);
 });
 
-test("REG-WS-09: А блокируют → оба соединения А закрыты 4403, соединение Б живо", async ({
+test("REG-WS-09: Админа 1 блокируют → оба его соединения закрыты 4403, соединение Админа 2 живо", async ({
   adminAccount,
   adminApi,
   signIn,
@@ -39,18 +39,18 @@ test("REG-WS-09: А блокируют → оба соединения А зак
   faker,
 }) => {
   const session2 = await signIn(adminAccount);
-  const boris = await signIn(await admin(db, faker));
-  const annaSession1 = await ws.openAuthenticated(await issueWsToken(adminApi));
-  const annaSession2 = await ws.openAuthenticated(await issueWsToken(session2));
-  const borisSocket = await ws.openAuthenticated(await issueWsToken(boris));
+  const admin2 = await signIn(await admin(db, faker));
+  const admin1Session1 = await ws.openAuthenticated(await issueWsToken(adminApi));
+  const admin1Session2 = await ws.openAuthenticated(await issueWsToken(session2));
+  const admin2Socket = await ws.openAuthenticated(await issueWsToken(admin2));
 
   await blockAdmin(db, redis, faker, adminAccount);
 
-  expect([await annaSession1.closeCode(), await annaSession2.closeCode(), await borisSocket.isAlive()]).toStrictEqual([
-    SESSION_ENDED,
-    SESSION_ENDED,
-    true,
-  ]);
+  expect([
+    await admin1Session1.closeCode(),
+    await admin1Session2.closeCode(),
+    await admin2Socket.isAlive(),
+  ]).toStrictEqual([SESSION_ENDED, SESSION_ENDED, true]);
 });
 
 test("REG-WS-11: токен выдан, затем logout этой сессии → auth этим токеном закрыт 4401, auth.ok не приходит", async ({
@@ -83,7 +83,7 @@ test("REG-WS-11: токен выдан, затем смена пароля ад�
   expect([await socket.messagesUntilClose(), await socket.closeCode()]).toStrictEqual([[], UNAUTHORIZED]);
 });
 
-test("REG-WS-12: А заблокирован в БД, а access.revoked до WS не дошёл → на следующий ping соединение закрыто 4403, pong не приходит", async ({
+test("REG-WS-12: Админ 1 заблокирован в БД, а access.revoked до WS не дошёл → на следующий ping соединение закрыто 4403, pong не приходит", async ({
   adminAccount,
   adminApi,
   ws,

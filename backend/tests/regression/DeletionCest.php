@@ -19,35 +19,35 @@ final class DeletionCest
 {
     private const string DELETED_AT = '2026-11-24 11:00:00+00';
 
-    /** REG-A-50: А удаляет активный → 302 и флэш, он на «Удалённых», не в «Активных», запись есть, deleted_by = А */
+    /** REG-A-50: Админ 1 удаляет активный → 302 и флэш, он на «Удалённых», не в «Активных», запись есть, deleted_by = Админ 1 */
     #[Group('exclusive')]
     public function adminDeletesActiveComment(RegressionTester $I): void
     {
-        $adminA = $I->haveAdmin();
+        $admin1 = $I->haveAdmin();
         $comment = $I->haveComment();
-        $I->amSignedInAs($adminA);
+        $I->amSignedInAs($admin1);
 
         $I->submitAdminForm(sprintf('/comments/%d/delete', $comment->id), ['status' => 'active', 'page' => '1']);
 
         $I->followRedirectAndSeeFlash('/?status=active&page=1', 'admin.deleted');
-        $I->assertSame(['deleted_by' => $adminA->id], $I->grabCommentColumns($comment->id, ['deleted_by']));
+        $I->assertSame(['deleted_by' => $admin1->id], $I->grabCommentColumns($comment->id, ['deleted_by']));
         $I->assertContains($comment->text, $I->grabJsonTexts('deleted'));
         $I->assertNotContains($comment->text, $I->grabJsonTexts('active'));
     }
 
-    /** REG-A-51: Б удаляет уже удалённый → 302 и «Уже удалён», deleted_by остаётся = А */
+    /** REG-A-51: Админ 2 удаляет уже удалённый Админом 1 → 302 и «Уже удалён», deleted_by остаётся = Админ 1 */
     #[Group('parallel')]
     public function secondDeletionKeepsFirstRemover(RegressionTester $I): void
     {
-        $adminA = $I->haveAdmin();
-        $comment = $I->haveComment(['deleted_at' => self::DELETED_AT, 'deleted_by' => $adminA->id]);
+        $admin1 = $I->haveAdmin();
+        $comment = $I->haveComment(['deleted_at' => self::DELETED_AT, 'deleted_by' => $admin1->id]);
         $I->amSignedInAs($I->haveAdmin());
 
         $I->submitAdminForm(sprintf('/comments/%d/delete', $comment->id), ['status' => 'active', 'page' => '1']);
 
         $I->followRedirectAndSeeFlash('/?status=active&page=1', 'admin.already_deleted');
         $I->assertSame(
-            ['deleted_at' => self::DELETED_AT, 'deleted_by' => $adminA->id],
+            ['deleted_at' => self::DELETED_AT, 'deleted_by' => $admin1->id],
             $I->grabCommentColumns($comment->id, ['deleted_at', 'deleted_by']),
         );
     }
