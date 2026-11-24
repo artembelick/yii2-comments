@@ -20,6 +20,9 @@ return [
         'wsUrl' => 'ws' . substr($env('ADMIN_URL'), strlen('http')) . '/ws',
     ],
     'components' => [
+        // Ошибки HTML-страниц — своим видом в layout части (REG-G-24, REG-A-55). JSON-эндпоинты ставят формат JSON
+        // раньше, чем может случиться ошибка, и этот вид не получают (REG-A-61b).
+        'errorHandler' => ['errorAction' => 'site/error'],
         'request' => [
             'cookieValidationKey' => $env('BACKEND_COOKIE_KEY'),
             'csrfParam' => '_csrf-backend',

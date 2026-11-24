@@ -20,7 +20,7 @@ final class EditCest
 
     private const string UPDATED_AT = '2026-11-24 10:30:00+00';
 
-    /** REG-A-40: GET правки активного → 200, форма с текущим текстом, имя только для чтения */
+    /** REG-A-40: GET правки активного → 200, форма с текущим текстом, имя в поле disabled со своей подписью */
     public function editPageShowsCurrentText(RegressionTester $I): void
     {
         $comment = $I->haveComment();
@@ -31,7 +31,8 @@ final class EditCest
         $I->seeResponseCodeIs(200);
         $I->see(Yii::t('app', 'admin.edit.title'), 'h1');
         $I->seeInField('textarea[name="text"]', $comment->text);
-        $I->seeElement('input[readonly][value="' . Html::encode($comment->author) . '"]');
+        $I->seeElement('input#comment-author[disabled][value="' . Html::encode($comment->author) . '"]');
+        $I->see(Yii::t('app', 'admin.edit.author'), 'label[for="comment-author"]');
         $I->dontSeeElement('[name="name"]');
     }
 

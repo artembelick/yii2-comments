@@ -18,6 +18,7 @@ use common\services\UpdateResult;
 use Override;
 use Yii;
 use yii\base\Module;
+use yii\filters\ContentNegotiator;
 use yii\filters\VerbFilter;
 use yii\web\BadRequestHttpException;
 use yii\web\ConflictHttpException;
@@ -49,10 +50,17 @@ final class CommentController extends Controller
     public function behaviors(): array
     {
         return [
+            // Первым: ошибки доступа, метода и CSRF на JSON-списке отдаются JSON, а не HTML-видом ошибки (REG-A-61b).
+            'json' => [
+                'class' => ContentNegotiator::class,
+                'only' => ['list'],
+                'formats' => ['application/json' => Response::FORMAT_JSON],
+            ],
             'access' => AdminAccessControl::class,
             'verbs' => [
                 'class' => VerbFilter::class,
                 'actions' => [
+                    'list' => ['GET'],
                     'update' => ['GET', 'POST'],
                     'delete' => ['POST'],
                     'restore' => ['POST'],
@@ -62,21 +70,24 @@ final class CommentController extends Controller
     }
 
     /**
+     * `$page` без типа: `?page[]=1` приходит массивом, и типизированный параметр дал бы 400 вместо первой страницы,
+     * как в ленте гостя (REG-A-30a).
+     *
      * @throws BadRequestHttpException неизвестная вкладка
      */
-    public function actionIndex(string $status = 'active', string $page = '1'): string
+    public function actionIndex(string $status = 'active', mixed $page = '1'): string
     {
         $tab = CommentStatus::tryFrom($status) ?? throw new BadRequestHttpException(Yii::t('app', 'admin.unknown_tab'));
 
         return $this->render('index', [
             'status' => $tab,
-            'page' => $this->comments->page($tab, (int) $page, self::PER_PAGE),
+            'page' => $this->comments->page($tab, $this->pageNumber($page), self::PER_PAGE),
             'serializer' => $this->serializer,
         ]);
     }
 
-    /** JSON-страница вкладки для клиента админки: те же записи, что видит index. */
-    public function actionList(string $status = 'active', string $page = '1'): Response
+    /** JSON-страница вкладки для клиента админки: те же записи и тот же разбор `?page=`, что у index. */
+    public function actionList(string $status = 'active', mixed $page = '1'): Response
     {
         $tab = CommentStatus::tryFrom($status);
         if ($tab === null) {
@@ -85,7 +96,7 @@ final class CommentController extends Controller
             return $this->asJson(['error' => 'invalid_status']);
         }
 
-        $comments = $this->comments->page($tab, (int) $page, self::PER_PAGE);
+        $comments = $this->comments->page($tab, $this->pageNumber($page), self::PER_PAGE);
 
         return $this->asJson([
             'items' => array_map($this->serializer->toArray(...), $comments->items),
@@ -171,6 +182,12 @@ final class CommentController extends Controller
         $this->flash($restored, 'admin.restored', 'admin.already_active');
 
         return $this->backToList();
+    }
+
+    /** Номер страницы из `?page=`: не число — 0, массив — 1. К диапазону страниц его приводит репозиторий. */
+    private function pageNumber(mixed $page): int
+    {
+        return is_string($page) ? (int) $page : 1;
     }
 
     /**

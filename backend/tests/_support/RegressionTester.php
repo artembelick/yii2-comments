@@ -211,6 +211,18 @@ final class RegressionTester extends Actor
         return array_values(array_filter((array) $this->grabHttpHeader('Set-Cookie', false), is_string(...)));
     }
 
+    /**
+     * Директивы заголовка Cache-Control последнего ответа: `no-store, no-cache` → `['no-store', 'no-cache']`.
+     *
+     * @return list<string>
+     */
+    public function grabCacheControlDirectives(): array
+    {
+        $header = $this->grabHttpHeader('Cache-Control');
+
+        return is_string($header) ? array_map(trim(...), explode(',', $header)) : [];
+    }
+
     /** Значение cookie сессии админки или null, если её нет. */
     public function grabSessionId(): ?string
     {

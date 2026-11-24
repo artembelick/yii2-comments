@@ -477,13 +477,13 @@ public function changePassword(string $username, string $password): void
 
 | ID | Поведение |
 |---|---|
-| UNIT-BC-01 | Провайдер `index`: `status=active` или без параметра → `page(Active, …)`; `status=deleted` → `page(Deleted, …)`; `status=foo` → 400 |
+| UNIT-BC-01 | Провайдер `index`: `status=active` или без параметра → `page(Active, …)`; `status=deleted` → `page(Deleted, …)`; `status=foo` → 400; `page` массивом (`?page[]=1`) → страница 1, а не 400 (REG-A-30a) |
 | UNIT-BC-02 | `update` через GET: активный → форма с текущим текстом; удалённый → 409 с `admin.edit_deleted`; несуществующий → 404 |
 | UNIT-BC-03 | Провайдер `update` через POST: `Updated` → флэш `admin.updated` (success) и редирект; `Unchanged` → флэш `admin.unchanged` (info) и редирект; невалидно, в том числе без поля `text`, → 422 и форма; `CommentIsDeletedException` → 409; `CommentNotFoundException` из сервиса (комментарий исчез после чтения контроллером) → 404 без текста исключения |
 | UNIT-BC-04 | `delete`: true → флэш `admin.deleted` (success); false → `admin.already_deleted` (info); редирект в список с сохранением вкладки и страницы (скрытые поля `status` и `page` формы строки; неверные или нет — первая страница «Активных»); несуществующий → 404 без текста исключения сервиса |
 | UNIT-BC-05 | `restore`: то же с `admin.restored` и `admin.already_active` |
-| UNIT-BC-06 | `list` → JSON `{items: [CommentSerializer], page, pageCount, totalCount}`; неверный `status` → 400 и JSON `{error: "invalid_status"}` |
-| UNIT-BC-07 | `behaviors()`: все действия только для вошедших; VerbFilter: `delete` и `restore` только POST, `update` только GET и POST |
+| UNIT-BC-06 | `list` → JSON `{items: [CommentSerializer], page, pageCount, totalCount}`; неверный `status` → 400 и JSON `{error: "invalid_status"}`; `page` массивом → страница 1 |
+| UNIT-BC-07 | `behaviors()`: все действия только для вошедших; VerbFilter: `delete` и `restore` только POST, `update` только GET и POST, `list` только GET (REG-A-61c) |
 
 ### `backend\controllers\WsTokenController`
 
@@ -492,6 +492,24 @@ public function changePassword(string $username, string $password): void
 | UNIT-WTC-01 | `create` вызывает `WsTokenService::issue(id админа, id сессии, auth_key админа)` и возвращает JSON `{token}` |
 | UNIT-WTC-02 | Ошибка Redis → 503 и JSON `{error: "unavailable"}` |
 | UNIT-WTC-03 | `behaviors()`: только вошедшие и только POST |
+
+JSON-эндпоинты (`list` и `ws-token/create`) ставят формат ответа JSON фильтром `ContentNegotiator` раньше доступа, VerbFilter и CSRF: ошибки фреймворка на них отдаются JSON, а не HTML-видом ошибки. Это конфигурация фильтра фреймворка, её проверяет REG-A-61b.
+
+### `common\web\ErrorPage`
+
+Что показать на HTML-странице ошибки (`errorAction` обеих частей, REG-G-24 и REG-A-55): код, заголовок и текст по исключению.
+
+| ID | Поведение |
+|---|---|
+| UNIT-ERR-01 | Провайдер кодов 400, 403, 404, 405, 409, 429, 500: код ответа исключения и заголовок `error.<код>.title` |
+| UNIT-ERR-02 | Текст: у 409 — сообщение исключения (`admin.edit_deleted`); у 409 без сообщения и у остальных кодов — `error.<код>.text`, даже если в исключении есть текст фреймворка |
+| UNIT-ERR-03 | Код вне таблицы получает тексты своего класса: 401 и 422 — как 400, 503 — как 500; исключение не `HttpException` → 500 с общим текстом, его сообщение не показывается |
+
+### `frontend\controllers\SiteController`, `backend\controllers\SiteController`
+
+| ID | Поведение |
+|---|---|
+| UNIT-ERR-04 | `site/error` (`errorAction` части) отдаёт вид ошибки: код ответа исключения, заголовок и текст из `ErrorPage`, ссылка назад: на публичной части «На главную», в админке «К списку», у 409 — на вкладку «Удалённые». В админке страница ошибки открыта и гостю |
 
 ---
 
