@@ -1,12 +1,12 @@
-import { findAll, lineAt } from "../source.js";
 // @ts-check
+import { findAll, lineAt } from "../source.js";
 import { PRODUCT_TEST_FILES } from "../test-locations.js";
+import { FULL_ID, testNameIds } from "../test-names.js";
 
 /** @typedef {import("../source.js").SourceFile} SourceFile */
 /** @typedef {import("../source.js").Violation} Violation */
 /** @typedef {{ planIds: ReadonlySet<string> }} PlanContext */
 
-const FULL_ID = String.raw`(?:UNIT|REG|SMOKE|E2E)(?:-[A-Z0-9]+)+[a-z]?`;
 const ID_TOKEN = new RegExp(String.raw`\b${FULL_ID}\b`, "gu");
 const HAS_ID = new RegExp(ID_TOKEN.source, "u");
 const STARTS_WITH_ID = new RegExp(String.raw`^${FULL_ID}:`, "u");
@@ -23,9 +23,6 @@ const CEST_TEST = /public function (?!_)\w+\s*\(\s*\w+Tester\s+\$I\b/gu;
 
 const MISSING_ID =
   "тест без ID из тест-плана: имя начинается с ID (`UNIT-VAL-01: …`), в PHP ID стоит в TestDox или docblock метода";
-
-/** Начало имени теста: строка JS, TestDox или docblock метода PHP (первая строка текста). */
-const TEST_NAME_ID = new RegExp(String.raw`(?:["'\x60]|\/\*\*\s+|^\s*\*\s+)(${FULL_ID}):`, "gmu");
 
 /**
  * ID сценариев, объявленные в тест-планах, с файлом и строкой объявления.
@@ -61,7 +58,7 @@ export function extractPlanIds(planFiles) {
  * @returns {Set<string>}
  */
 export function implementedIds(testFiles) {
-  return new Set(testFiles.flatMap(({ text }) => [...text.matchAll(TEST_NAME_ID)].map(([, id]) => String(id))));
+  return new Set(testFiles.flatMap((file) => testNameIds(file)));
 }
 
 /**

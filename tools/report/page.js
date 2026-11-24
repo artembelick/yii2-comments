@@ -5,6 +5,8 @@
  * Ссылка на несуществующий файл или нереализованный ID роняет сборку: битой ссылки на странице быть не должно.
  */
 
+import { ReportError } from "./report-error.js";
+
 /** @typedef {import("./results.js").RunSummary} RunSummary */
 /** @typedef {import("./results.js").SuiteSummary} SuiteSummary */
 /** @typedef {import("./coverage.js").Ratio} Ratio */
@@ -27,6 +29,7 @@ const SHORT_SHA = 7;
 /** `2026-11-25T09:30:00.000Z` → `2026-11-25 09:30`. */
 const MINUTES_END = 16;
 const PERCENT = 100;
+const MINUTE_MS = 60_000;
 const COVERAGE_HEAD = "<tr><th>Код</th><th>Покрытие</th><th>Покрыто</th><th>Отчёт</th></tr>";
 const RUN_HEAD = "<tr><th>Набор</th><th>Всего</th><th>Прошло</th><th>Упало</th><th>Прочее</th></tr>";
 const MATRIX_HEAD =
@@ -80,15 +83,35 @@ const suiteRow = ({ suite, total, passed, failed, other }, className) =>
   row([suite, total, passed, failed, other], `${failed > 0 ? "failed" : ""} ${className}`.trim());
 
 /**
+ * Набор без результатов не запускался (например, упал lint, и jobs стенда пропущены), а не «0 из 0».
+ *
+ * @param {SuiteSummary} summary
+ * @returns {string}
+ */
+const productRow = (summary) =>
+  summary.total === 0
+    ? `<tr class="missing"><td>${summary.suite}</td><td colspan="4">не запускался</td></tr>`
+    : suiteRow(summary, "");
+
+/**
+ * @param {RunSummary} summary
+ * @returns {string}
+ */
+const runTime = ({ startedAt, durationMs }) => {
+  if (startedAt === undefined || durationMs === undefined) {
+    return "результатов прогона нет";
+  }
+  const minutes = Math.floor(durationMs / MINUTE_MS);
+
+  return `прогон начат ${startedAt.replace("T", " ").slice(0, MINUTES_END)} UTC и шёл ${minutes === 0 ? "меньше минуты" : `${minutes} мин`}`;
+};
+
+/**
  * @param {PageContext} context
  * @returns {string}
  */
 const renderRun = (context) => {
   const { summary } = context;
-  const when =
-    summary.startedAt === undefined
-      ? "результатов прогона нет"
-      : `прогон начат ${summary.startedAt.replace("T", " ").slice(0, MINUTES_END)} UTC`;
   const totals = { suite: "Всего", total: 0, passed: 0, failed: 0, other: 0 };
   for (const suite of summary.suites) {
     totals.total += suite.total;
@@ -96,12 +119,11 @@ const renderRun = (context) => {
     totals.failed += suite.failed;
     totals.other += suite.other;
   }
-  const rows = summary.suites.map((suite) => suiteRow(suite, ""));
-  const totalRow = suiteRow(totals, "total");
+  const rows = [...summary.suites.map(productRow), suiteRow(totals, "total"), suiteRow(summary.tools, "tools")];
 
   return (
-    `<p>Коммит <a href="${context.repo}/commit/${context.sha}"><code>${context.sha.slice(0, SHORT_SHA)}</code></a>, ${when}. ` +
-    `<a href="allure/index.html">Отчёт Allure</a></p>\n${table(RUN_HEAD, [...rows, totalRow])}`
+    `<p>Коммит <a href="${context.repo}/commit/${context.sha}"><code>${context.sha.slice(0, SHORT_SHA)}</code></a>, ${runTime(summary)}. ` +
+    `<a href="allure/index.html">Отчёт Allure</a></p>\n${table(RUN_HEAD, rows)}`
   );
 };
 
@@ -170,7 +192,7 @@ const renderRequirements = (context) => {
  */
 const fileLink = (context, path) => {
   if (!context.files.has(path)) {
-    throw new Error(`{{file:${path}}}: файла нет в репозитории`);
+    throw new ReportError(`{{file:${path}}}: файла нет в репозитории`);
   }
 
   return `<a href="${blob(context, path)}"><code>${escape(path)}</code></a>`;
@@ -184,7 +206,7 @@ const fileLink = (context, path) => {
 const testLink = (context, id) => {
   const file = context.testFiles.get(id);
   if (file === undefined) {
-    throw new Error(`{{test:${id}}}: ни одно имя теста не начинается с этого ID`);
+    throw new ReportError(`{{test:${id}}}: ни одно имя теста не начинается с этого ID`);
   }
 
   return `<a href="${blob(context, file)}">${escape(id)}</a>`;
@@ -218,7 +240,7 @@ const substitute = (placeholder, context) => {
   if (link !== undefined) {
     return link(context, placeholder.slice(colon + 1));
   }
-  throw new Error(`{{${placeholder}}}: неизвестная подстановка`);
+  throw new ReportError(`{{${placeholder}}}: неизвестная подстановка`);
 };
 
 /**

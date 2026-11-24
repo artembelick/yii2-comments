@@ -11,43 +11,29 @@
  * @property {string} name
  * @property {string} fullName
  * @property {string} status passed, failed, broken, skipped или unknown
+ * @property {string} uuid имя файла результата: `<uuid>-result.json`
  * @property {number} start
+ * @property {number} stop
  * @property {string} historyId
  * @property {Parameter[]} parameters
  * @property {Label[]} labels
  * @typedef {{ suite: string, total: number, passed: number, failed: number, other: number }} SuiteSummary
- * @typedef {{ startedAt: string | undefined, suites: SuiteSummary[] }} RunSummary
- * @typedef {{ path: string, text: string }} SourceFile
+ * @typedef {object} RunSummary
+ * @property {string | undefined} startedAt начало первого теста
+ * @property {number | undefined} durationMs от начала первого теста до конца последнего
+ * @property {SuiteSummary[]} suites наборы продукта в порядке пирамиды
+ * @property {SuiteSummary} tools тесты своих инструментов
  */
 
-/**
- * Наборы в порядке пирамиды и префиксы их ID (docs/test-plans/README.md).
- *
- * @type {readonly (readonly [string, string])[]}
- */
-export const SUITES = [
-  ["unit", "UNIT"],
-  ["smoke", "SMOKE"],
-  ["regression", "REG"],
-  ["e2e", "E2E"],
-];
-const LEADING_ID = /^((UNIT|REG|SMOKE|E2E)(?:-[A-Z0-9]+)+[a-z]?):/u;
+import { LEADING_ID, SUITES } from "../checks/test-names.js";
+import { ReportError } from "./report-error.js";
+
 const GROUP_LABELS = new Set(["parentSuite", "suite", "subSuite"]);
 const TOOLS_GROUP = "Тесты инструментов";
 const DATASET = "набор данных";
-
-const NAMESPACE = /^namespace\s+([\w\\]+);/mu;
-const CLASS = /\bclass\s+(\w+)/u;
-const METHOD = /public function (?!_)(\w+)\s*\(/gu;
-/** Атрибуты PHP прямо перед методом. */
-const ATTRIBUTES = String.raw`(?:#\[[^\n]*\]\s*)*$`;
-/** TestDox в атрибутах метода. */
-const TEST_DOX = new RegExp(String.raw`#\[TestDox\('([^']+)'\)\]\s*${ATTRIBUTES}`, "u");
-/** Первая строка docblock метода, если это не тег: однострочный docblock или первая строка после `/**`. */
-const DOC_TITLE = new RegExp(
-  String.raw`\/\*\*[\s*]*([^\s*@](?:(?!\*\/)[^\n])*?)\s*(?=\*\/|\n)(?:(?!\*\/)[\s\S])*\*\/\s*${ATTRIBUTES}`,
-  "u",
-);
+/** Поле fullName у allure-vitest: `<проект>:<файл>#<имя>`; тесты своих инструментов лежат в tools/. */
+const TOOLS_TEST = /^[^:#]*:tools\//u;
+const FAILED = new Set(["failed", "broken"]);
 
 /**
  * Полей не проверяет: результат пишет адаптер Allure, проверяется только, что это объект результата с метками.
@@ -57,13 +43,6 @@ const DOC_TITLE = new RegExp(
  */
 const isResult = (value) =>
   typeof value === "object" && value !== null && "labels" in value && Array.isArray(value.labels);
-
-/**
- * @param {string} key
- * @param {string} title
- * @returns {[string, string]}
- */
-const entry = (key, title) => [key, title];
 
 /**
  * Результат Allure из файла. Сломанный файл роняет сборку: тест не должен молча выпасть из отчёта.
@@ -76,64 +55,48 @@ export function parseResult(json, file) {
   /** @type {unknown} */
   const value = JSON.parse(json);
   if (!isResult(value)) {
-    throw new Error(`${file}: не результат Allure`);
+    throw new ReportError(`${file}: не результат Allure`);
   }
 
   return value;
 }
 
 /**
- * Имена PHP-тестов из исходников: TestDox у unit, первая строка docblock у Cest (rules.md, ЧТ-1).
- * Allure-codeception пишет имя метода, а имя теста с ID есть только в исходнике.
+ * Группы «набор → ID»; тесты своих инструментов — отдельная группа, внутри прежний набор адаптера.
  *
- * @param {readonly SourceFile[]} files
- * @returns {Map<string, string>} `namespace\Класс::метод` → имя теста
- */
-export function phpTestTitles(files) {
-  return new Map(
-    files.flatMap(({ text }) => {
-      const prefix = `${NAMESPACE.exec(text)?.[1] ?? ""}\\${String(CLASS.exec(text)?.[1])}::`;
-
-      return [...text.matchAll(METHOD)].flatMap((match) => {
-        const before = text.slice(0, match.index);
-        const title = TEST_DOX.exec(before)?.[1] ?? DOC_TITLE.exec(before)?.[1];
-
-        return title === undefined ? [] : [entry(`${prefix}${String(match[1])}`, title)];
-      });
-    }),
-  );
-}
-
-/**
- * @param {string} name
- * @param {Label[]} labels
+ * @param {AllureResult} result
+ * @param {string} name имя теста из плана
  * @returns {Label[]}
  */
-const groupLabels = (name, labels) => {
+const groupLabels = ({ fullName, labels }, name) => {
   const [, id, prefix] = LEADING_ID.exec(name) ?? [];
   const suite = SUITES.find(([, idPrefix]) => idPrefix === prefix)?.[0];
   const kept = labels.filter((label) => !GROUP_LABELS.has(label.name));
   const adapterGroup = labels.find((label) => label.name === "parentSuite");
 
-  return id === undefined || suite === undefined
-    ? [
-        ...kept,
-        { name: "parentSuite", value: "unit" },
-        { name: "suite", value: TOOLS_GROUP },
-        ...(adapterGroup === undefined ? [] : [{ name: "subSuite", value: adapterGroup.value }]),
-      ]
-    : [...kept, { name: "parentSuite", value: suite }, { name: "suite", value: id }];
+  if (id !== undefined && suite !== undefined) {
+    return [...kept, { name: "parentSuite", value: suite }, { name: "suite", value: id }];
+  }
+  if (!TOOLS_TEST.test(fullName)) {
+    throw new ReportError(`${fullName}: у теста продукта нет ID в начале имени`);
+  }
+
+  return [
+    ...kept,
+    { name: "parentSuite", value: TOOLS_GROUP },
+    ...(adapterGroup === undefined ? [] : [{ name: "suite", value: adapterGroup.value }]),
+  ];
 };
 
 /**
- * Имя из плана и группы «набор → ID». Наборы data provider в Codeception приходят без параметров и с одним
- * historyId: Allure посчитал бы их повторами одного теста, поэтому каждый получает номер набора.
+ * Один прогон (job): имя из плана, группы и номер набора data provider. Наборы data provider в Codeception
+ * приходят без параметров и с одним historyId: Allure посчитал бы их повторами одного теста.
  *
  * @param {readonly AllureResult[]} results
- * @param {ReadonlyMap<string, string>} titles имена PHP-тестов, см. phpTestTitles
+ * @param {ReadonlyMap<string, string>} titles
  * @returns {AllureResult[]}
  */
-export function prepareResults(results, titles) {
+const prepareRun = (results, titles) => {
   /** @type {Map<string, number>} */
   const seen = new Map();
   const duplicated = new Set(
@@ -149,13 +112,54 @@ export function prepareResults(results, titles) {
     return {
       ...source,
       name,
-      labels: groupLabels(name, source.labels),
+      labels: groupLabels(source, name),
       ...(dataset
         ? { historyId: `${source.historyId}#${number}`, parameters: [{ name: DATASET, value: String(number) }] }
         : {}),
     };
   });
+};
+
+/**
+ * Результаты прогонов (по одному на job CI) к отчёту. Тест, который шёл в нескольких прогонах (smoke идёт в каждом
+ * job со стендом), остаётся одним результатом: упавший экземпляр, если он есть, иначе первый.
+ *
+ * @param {readonly (readonly AllureResult[])[]} runs
+ * @param {ReadonlyMap<string, string>} titles имена PHP-тестов, см. phpTestTitles
+ * @returns {AllureResult[]}
+ */
+export function prepareResults(runs, titles) {
+  /** @type {Map<string, AllureResult>} */
+  const kept = new Map();
+  for (const result of runs.flatMap((run) => prepareRun(run, titles))) {
+    const previous = kept.get(result.historyId);
+    if (previous === undefined || (FAILED.has(result.status) && !FAILED.has(previous.status))) {
+      kept.set(result.historyId, result);
+    }
+  }
+
+  return [...kept.values()];
 }
+
+/**
+ * @param {string} suite
+ * @param {readonly AllureResult[]} own
+ * @returns {SuiteSummary}
+ */
+const summarize = (suite, own) => {
+  const passed = own.filter(({ status }) => status === "passed").length;
+  const failed = own.filter(({ status }) => FAILED.has(status)).length;
+
+  return { suite, total: own.length, passed, failed, other: own.length - passed - failed };
+};
+
+/**
+ * @param {readonly AllureResult[]} results
+ * @param {string} group
+ * @returns {AllureResult[]}
+ */
+const inGroup = (results, group) =>
+  results.filter(({ labels }) => labels.some((label) => label.name === "parentSuite" && label.value === group));
 
 /**
  * Итог по наборам для раздела 1 страницы.
@@ -164,16 +168,13 @@ export function prepareResults(results, titles) {
  * @returns {RunSummary}
  */
 export function summarizeRun(results) {
-  const starts = results.map(({ start }) => start);
-  const suites = SUITES.map(([suite]) => {
-    const own = results.filter(({ labels }) =>
-      labels.some((label) => label.name === "parentSuite" && label.value === suite),
-    );
-    const passed = own.filter(({ status }) => status === "passed").length;
-    const failed = own.filter(({ status }) => status === "failed" || status === "broken").length;
+  const start = results.length === 0 ? undefined : Math.min(...results.map((result) => result.start));
+  const stop = Math.max(...results.map((result) => result.stop));
 
-    return { suite, total: own.length, passed, failed, other: own.length - passed - failed };
-  });
-
-  return { startedAt: starts.length === 0 ? undefined : new Date(Math.min(...starts)).toISOString(), suites };
+  return {
+    startedAt: start === undefined ? undefined : new Date(start).toISOString(),
+    durationMs: start === undefined ? undefined : stop - start,
+    suites: SUITES.map(([suite]) => summarize(suite, inGroup(results, suite))),
+    tools: summarize(TOOLS_GROUP, inGroup(results, TOOLS_GROUP)),
+  };
 }

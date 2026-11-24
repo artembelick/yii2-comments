@@ -15,7 +15,12 @@ const SHA = "0123456789abcdef0123456789abcdef01234567";
 const context = (fields) => ({
   repo: REPO,
   sha: SHA,
-  summary: { startedAt: undefined, suites: [] },
+  summary: {
+    startedAt: undefined,
+    durationMs: undefined,
+    suites: [],
+    tools: { suite: "Тесты инструментов", total: 0, passed: 0, failed: 0, other: 0 },
+  },
   php: undefined,
   js: undefined,
   planIds: [],
@@ -26,23 +31,36 @@ const context = (fields) => ({
 });
 
 describe("страница отчёта", () => {
-  it("{{run}}: коммит со ссылкой, время начала, таблица по наборам с итогом и ссылка в Allure", () => {
+  it("{{run}}: коммит со ссылкой, начало и длительность прогона, таблица по наборам продукта с итогом, тесты инструментов отдельной строкой, ссылка в Allure", () => {
     const summary = {
       startedAt: "2026-11-25T09:30:00.000Z",
+      durationMs: 12 * 60_000 + 29_000,
       suites: [
         { suite: "unit", total: 3, passed: 3, failed: 0, other: 0 },
+        { suite: "smoke", total: 0, passed: 0, failed: 0, other: 0 },
         { suite: "e2e", total: 2, passed: 1, failed: 1, other: 0 },
       ],
+      tools: { suite: "Тесты инструментов", total: 4, passed: 4, failed: 0, other: 0 },
     };
 
     expect(renderPage("{{run}}", context({ summary }))).toBe(
-      `<p>Коммит <a href="${REPO}/commit/${SHA}"><code>0123456</code></a>, прогон начат 2026-11-25 09:30 UTC. ` +
+      `<p>Коммит <a href="${REPO}/commit/${SHA}"><code>0123456</code></a>, прогон начат 2026-11-25 09:30 UTC и шёл 12 мин. ` +
         `<a href="allure/index.html">Отчёт Allure</a></p>\n` +
         "<table><thead><tr><th>Набор</th><th>Всего</th><th>Прошло</th><th>Упало</th><th>Прочее</th></tr></thead><tbody>\n" +
         "<tr><td>unit</td><td>3</td><td>3</td><td>0</td><td>0</td></tr>\n" +
+        '<tr class="missing"><td>smoke</td><td colspan="4">не запускался</td></tr>\n' +
         '<tr class="failed"><td>e2e</td><td>2</td><td>1</td><td>1</td><td>0</td></tr>\n' +
         '<tr class="failed total"><td>Всего</td><td>5</td><td>4</td><td>1</td><td>0</td></tr>\n' +
+        '<tr class="tools"><td>Тесты инструментов</td><td>4</td><td>4</td><td>0</td><td>0</td></tr>\n' +
         "</tbody></table>",
+    );
+  });
+
+  it("{{run}}: прогон короче минуты → «меньше минуты»", () => {
+    const summary = { ...context({}).summary, startedAt: "2026-11-25T09:30:00.000Z", durationMs: 29_000 };
+
+    expect(renderPage("{{run}}", context({ summary })).split("\n")[0]).toContain(
+      "прогон начат 2026-11-25 09:30 UTC и шёл меньше минуты.",
     );
   });
 

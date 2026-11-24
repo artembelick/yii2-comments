@@ -101,10 +101,15 @@ describe("test-ids", () => {
     const tests = [
       { path: "backend/web/js/__tests__/a.test.js", text: "\nit.each([1])('UNIT-JS-BO-01: %s', () => {});\n" },
       { path: "e2e/tests/smoke/a.spec.ts", text: '\ntest("SMOKE-01: открывается", async () => {});\n' },
-      { path: "common/tests/unit/NTest.php", text: "<?php\n    #[TestDox('UNIT-NORM-01: обрезает')]\n" },
+      {
+        path: "common/tests/unit/NTest.php",
+        text: "<?php\n    #[TestDox('UNIT-NORM-01: обрезает')]\n    public function testTrims(): void {}\n",
+      },
       {
         path: "frontend/tests/regression/FCest.php",
-        text: "<?php\n    /** REG-G-13: имя */\n    /**\n     * REG-G-13a: имя\n     */\n",
+        text:
+          "<?php\n    /** REG-G-13: имя */\n    public function name(RegressionTester $I): void {}\n" +
+          "    /**\n     * REG-G-13a: имя\n     */\n    public function nameLong(RegressionTester $I): void {}\n",
       },
     ];
 
@@ -128,10 +133,32 @@ describe("test-ids", () => {
     expect([...implementedIds(tests)]).toStrictEqual(["UNIT-NORM-01"]);
   });
 
+  it("упоминание ID в строке комментария, в закомментированном тесте или в docblock не перед методом не реализует его", () => {
+    const tests = [
+      {
+        path: "e2e/tests/smoke/a.spec.ts",
+        text: '\n/**\n * SMOKE-01: выключен\n */\n// TODO вернуть "SMOKE-02: …"\n// test("E2E-01: путь", async () => {});\n',
+      },
+      {
+        path: "frontend/tests/regression/FCest.php",
+        text: "<?php\n    /** REG-G-13: константа */\n    const LIMIT = 1;\n    // 'REG-G-13a: выключен'\n    public function helper(): void {}\n    /** Имя без ID, REG-G-13 в середине */\n    public function plain(RegressionTester $I): void {}\n",
+      },
+      {
+        path: "backend/web/js/__tests__/a.test.js",
+        text: '\nit(\n  "UNIT-JS-BO-01: имя на второй строке",\n  () => {},\n);\n',
+      },
+    ];
+
+    expect([...implementedIds(tests)]).toStrictEqual(["UNIT-JS-BO-01"]);
+  });
+
   it("сценарий плана без теста → нарушение с файлом и строкой плана", () => {
     const tests = [
       { path: "e2e/tests/smoke/a.spec.ts", text: '\ntest("SMOKE-01: открывается", async () => {});\n' },
-      { path: "frontend/tests/regression/FCest.php", text: "<?php\n    /** REG-G-13: имя */\n" },
+      {
+        path: "frontend/tests/regression/FCest.php",
+        text: "<?php\n    /** REG-G-13: имя */\n    public function name(RegressionTester $I): void {}\n",
+      },
     ];
 
     expect(unimplementedPlanIds(PLAN, tests)).toStrictEqual([

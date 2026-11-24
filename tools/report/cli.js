@@ -2,17 +2,30 @@
 import { access, copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { filesOf, listFiles } from "../checks/cli.js";
+import { filesOf, listFiles, PLAN_DIR } from "../checks/cli.js";
 import { extractPlanIds, implementedIds, testIds } from "../checks/rules/test-ids.js";
+import { pair } from "../checks/source.js";
 import { PHP_TEST_FILES } from "../checks/test-locations.js";
+import { phpTestTitles } from "../checks/test-names.js";
 import { jsCoverage, phpCoverage } from "./coverage.js";
 import { renderPage } from "./page.js";
 import { pathMatrix } from "./path-matrix.js";
-import { parseResult, phpTestTitles, prepareResults, summarizeRun } from "./results.js";
+import { ReportError } from "./report-error.js";
+import { parseResult, prepareResults, summarizeRun } from "./results.js";
 
 /** @typedef {import("./results.js").AllureResult} AllureResult */
-/** @typedef {import("./results.js").SourceFile} SourceFile */
+/** @typedef {import("../checks/source.js").SourceFile} SourceFile */
 /** @typedef {{ root: string, argv: readonly string[], write: (chunk: string) => void }} CliOptions */
+/**
+ * @typedef {object} ReportOptions
+ * @property {string} results каталог Allure-результатов: файлы в нём — один прогон, каждый подкаталог — ещё один (job CI)
+ * @property {string} phpClover отчёт покрытия PHP (clover)
+ * @property {string} jsSummary отчёт покрытия JS (json-summary)
+ * @property {string} prepared
+ * @property {string} page
+ * @property {string} repo
+ * @property {string} sha
+ */
 
 const OPTIONS = ["results", "php-coverage", "js-coverage", "prepared", "page", "repo", "sha"];
 const OPTION = /^--([\w-]+)=(.+)$/su;
@@ -20,33 +33,37 @@ const USAGE =
   "использование: node tools/report/bin.js --results=<allure-results> --php-coverage=<clover.xml> " +
   "--js-coverage=<coverage-summary.json> --prepared=<каталог> --page=<index.html> --repo=<адрес репозитория> --sha=<коммит>\n";
 const TEMPLATE = "tools/report/page.html";
-const PLAN_DIR = "docs/test-plans";
 const RESULT_SUFFIX = "-result.json";
 export const EXIT_OK = 0;
 export const EXIT_BROKEN = 1;
 export const EXIT_USAGE = 2;
 
 /**
- * @param {string} key
- * @param {string} value
- * @returns {[string, string]}
- */
-const pair = (key, value) => [key, value];
-
-/**
- * `--имя=значение` → имя и значение; прочие аргументы не учитываются.
+ * `--имя=значение` → параметры сборки; прочие аргументы не учитываются. Без любого из параметров — undefined.
  *
  * @param {readonly string[]} argv
- * @returns {Map<string, string>}
+ * @returns {ReportOptions | undefined}
  */
-const parseOptions = (argv) =>
-  new Map(
+const parseOptions = (argv) => {
+  const values = new Map(
     argv.flatMap((arg) => {
       const option = OPTION.exec(arg);
 
       return option === null ? [] : [pair(String(option[1]), String(option[2]))];
     }),
   );
+  const [results, phpClover, jsSummary, prepared, page, repo, sha] = OPTIONS.map((name) => values.get(name));
+
+  return results === undefined ||
+    phpClover === undefined ||
+    jsSummary === undefined ||
+    prepared === undefined ||
+    page === undefined ||
+    repo === undefined ||
+    sha === undefined
+    ? undefined
+    : { results, phpClover, jsSummary, prepared, page, repo, sha };
+};
 
 /**
  * Адрес репозитория на GitHub из git remote: `git@github.com:o/r.git` и `https://github.com/o/r.git` → `https://github.com/o/r`.
@@ -79,7 +96,29 @@ const exists = async (file) => {
 const readOptional = async (file) => ((await exists(file)) ? readFile(file, "utf8") : undefined);
 
 /**
- * Allure-результаты: `*-result.json` готовятся к отчёту, контейнеры и вложения копируются как есть.
+ * Allure-результаты одного каталога: результаты и прочие файлы (контейнеры, вложения).
+ *
+ * @param {string} directory
+ * @returns {Promise<{ results: AllureResult[], others: string[], runs: string[] }>}
+ */
+const readRun = async (directory) => {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = entries.filter((entry) => entry.isFile()).map((entry) => path.join(directory, entry.name));
+  const resultFiles = files.filter((file) => file.endsWith(RESULT_SUFFIX));
+  const results = await Promise.all(
+    resultFiles.map(async (file) => parseResult(await readFile(file, "utf8"), path.basename(file))),
+  );
+
+  return {
+    results,
+    others: files.filter((file) => !file.endsWith(RESULT_SUFFIX)),
+    runs: entries.filter((entry) => entry.isDirectory()).map((entry) => path.join(directory, entry.name)),
+  };
+};
+
+/**
+ * Allure-результаты к отчёту: файлы каталога — один прогон, каждый подкаталог — ещё один (артефакт job CI).
+ * Результаты готовятся к отчёту и пишутся как `<uuid>-result.json`, контейнеры и вложения копируются как есть.
  *
  * @param {string} from
  * @param {string} to
@@ -87,20 +126,19 @@ const readOptional = async (file) => ((await exists(file)) ? readFile(file, "utf
  * @returns {Promise<AllureResult[]>}
  */
 const prepareDirectory = async (from, to, titles) => {
-  const names = await readdir(from);
-  const resultNames = names.filter((name) => name.endsWith(RESULT_SUFFIX));
-  const texts = await Promise.all(resultNames.map(async (name) => readFile(path.join(from, name), "utf8")));
+  const top = await readRun(from);
+  const nested = await Promise.all(top.runs.map(async (directory) => readRun(directory)));
+  const runs = [top, ...nested];
   const prepared = prepareResults(
-    texts.map((text, index) => parseResult(text, String(resultNames[index]))),
+    runs.map(({ results }) => results),
     titles,
   );
-  const copied = names.filter((name) => !name.endsWith(RESULT_SUFFIX));
 
   await mkdir(to, { recursive: true });
   await Promise.all([
-    ...copied.map(async (name) => copyFile(path.join(from, name), path.join(to, name))),
-    ...prepared.map(async (result, index) =>
-      writeFile(path.join(to, String(resultNames[index])), JSON.stringify(result)),
+    ...runs.flatMap(({ others }) => others).map(async (file) => copyFile(file, path.join(to, path.basename(file)))),
+    ...prepared.map(async (result) =>
+      writeFile(path.join(to, `${result.uuid}${RESULT_SUFFIX}`), JSON.stringify(result)),
     ),
   ]);
 
@@ -125,20 +163,13 @@ const readSources = async (root, files) =>
   Promise.all(files.map(async (file) => ({ path: file, text: await readFile(path.join(root, file), "utf8") })));
 
 /**
- * Готовит Allure-результаты и собирает главную страницу отчёта.
+ * Готовит Allure-результаты и собирает страницу. Входные данные, из которых честного отчёта не собрать, — ReportError.
  *
- * @param {CliOptions} options
- * @returns {Promise<number>} EXIT_OK, EXIT_BROKEN (битая ссылка в шаблоне) или EXIT_USAGE
+ * @param {string} root
+ * @param {ReportOptions} options
+ * @returns {Promise<{ results: AllureResult[], page: string }>}
  */
-export async function run({ root, argv, write }) {
-  const values = parseOptions(argv);
-  if (OPTIONS.some((name) => !values.has(name))) {
-    write(USAGE);
-
-    return EXIT_USAGE;
-  }
-  /** @type {(name: string) => string} */
-  const option = (name) => path.resolve(root, String(values.get(name)));
+const buildReport = async (root, options) => {
   const files = await listFiles(root);
   const plans = await readSources(
     root,
@@ -146,35 +177,71 @@ export async function run({ root, argv, write }) {
   );
   const tests = await readSources(root, filesOf(testIds, files));
   const phpTests = await readSources(root, filesOf({ files: [PHP_TEST_FILES], exclude: [] }, files));
-  const results = await prepareDirectory(option("results"), option("prepared"), phpTestTitles(phpTests));
   const planIds = [...extractPlanIds(plans)];
-
   const template = await readFile(path.join(root, TEMPLATE), "utf8");
   const readme = await readFile(path.join(root, PLAN_DIR, "README.md"), "utf8");
-  const php = phpCoverage(await readOptional(option("php-coverage")));
-  const js = jsCoverage(await readOptional(option("js-coverage")));
-  const repo = repoUrl(String(values.get("repo")));
+  const php = phpCoverage(await readOptional(path.resolve(root, options.phpClover)));
+  const js = jsCoverage(await readOptional(path.resolve(root, options.jsSummary)));
+  const results = await prepareDirectory(
+    path.resolve(root, options.results),
+    path.resolve(root, options.prepared),
+    phpTestTitles(phpTests),
+  );
+  const page = renderPage(template, {
+    repo: repoUrl(options.repo),
+    sha: options.sha,
+    summary: summarizeRun(results),
+    php,
+    js,
+    planIds,
+    testFiles: testFilesById(tests),
+    matrix: pathMatrix(readme, planIds),
+    files: new Set(files),
+  });
 
+  return { results, page };
+};
+
+/**
+ * Сборка или причина, по которой честного отчёта не собрать. Прочие ошибки (диск, права) не маскируются.
+ *
+ * @param {string} root
+ * @param {ReportOptions} options
+ * @returns {Promise<{ results: AllureResult[], page: string } | ReportError>}
+ */
+const buildOrReason = async (root, options) => {
   try {
-    const page = renderPage(template, {
-      repo,
-      sha: String(values.get("sha")),
-      summary: summarizeRun(results),
-      php,
-      js,
-      planIds,
-      testFiles: testFilesById(tests),
-      matrix: pathMatrix(readme, planIds),
-      files: new Set(files),
-    });
-    await writeFile(option("page"), page);
-    write(`tools/report: результатов ${results.length}, страница ${option("page")}\n`);
-
-    return EXIT_OK;
+    return await buildReport(root, options);
   } catch (error) {
-    // Ошибки сборки страницы — Error с причиной: битая ссылка, ID матрицы вне плана.
-    write(`tools/report: ${String(error).replace(/^Error: /u, "")}\n`);
+    if (error instanceof ReportError) {
+      return error;
+    }
+    throw error;
+  }
+};
+
+/**
+ * Готовит Allure-результаты и собирает главную страницу отчёта.
+ *
+ * @param {CliOptions} cli
+ * @returns {Promise<number>} EXIT_OK, EXIT_BROKEN (из входных данных честного отчёта не собрать) или EXIT_USAGE
+ */
+export async function run({ root, argv, write }) {
+  const options = parseOptions(argv);
+  if (options === undefined) {
+    write(USAGE);
+
+    return EXIT_USAGE;
+  }
+  const built = await buildOrReason(root, options);
+  if (built instanceof ReportError) {
+    write(`tools/report: ${built.message}\n`);
 
     return EXIT_BROKEN;
   }
+  const page = path.resolve(root, options.page);
+  await writeFile(page, built.page);
+  write(`tools/report: результатов ${built.results.length}, страница ${page}\n`);
+
+  return EXIT_OK;
 }

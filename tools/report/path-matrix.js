@@ -5,6 +5,8 @@
  * `A-01…A-13` — диапазон по порядку плана, `LOGIN` — все ID семейства.
  */
 
+import { ReportError } from "./report-error.js";
+
 /** @typedef {{ label: string, ids: string[] }} MatrixToken */
 /** @typedef {{ step: string, what: string, cells: MatrixToken[][] }} MatrixRow */
 
@@ -55,7 +57,7 @@ const parseCell = (cell, planIds, prefix) =>
       const ids = expand(label, planIds, prefix);
 
       if (ids.length === 0) {
-        throw new Error(`${label} из матрицы пути нет в docs/test-plans/`);
+        throw new ReportError(`${label} из матрицы пути нет в docs/test-plans/`);
       }
 
       return { label, ids };

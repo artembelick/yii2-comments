@@ -10,7 +10,8 @@
 #                 повторяет он же: TEST_RUN_ID=<id 1> TEST_RUN_ID_2=<id 2> SEED=<seed 1> make test-rerun.
 #                 Вручную: make stand-up, затем make test-no-pristine два раза подряд.
 # Шарды CI:       SHARD=<i>/<n> make test-regression-parallel и т. п. — только для яруса parallel.
-# Отчёт:          make report после make check: Allure и страница отчёта в site/ (открыть site/index.html).
+# Отчёт:          make report после make check: Allure и страница отчёта в site/. Смотреть через http:
+#                 python3 -m http.server -d site (Allure 3 грузит данные через fetch, из file:// не открывается).
 
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -58,7 +59,7 @@ PLAYWRIGHT_SHARD := $(if $(SHARD),--shard=$(SHARD),)
 	stand-up stand-down stand-logs test-unit test-unit-php test-unit-js test-smoke test-regression \
 	test-regression-pristine test-regression-parallel test-regression-exclusive \
 	test-regression-ws-parallel test-regression-ws-exclusive test-e2e test-e2e-parallel test-e2e-exclusive \
-	test-no-pristine coverage check test-rerun run-id report
+	test-no-pristine coverage check test-rerun run-id report report-collect
 
 help: ## Список целей
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-30s %s\n", $$1, $$2}'
@@ -260,7 +261,24 @@ report: ## Отчёт после make check: Allure, покрытие и гла�
 	$(NODE_RUN) node_modules/.bin/allure generate $(ALLURE_PREPARED) --output site/allure
 	if [ -d tests/_output/coverage-php-html ]; then cp -R tests/_output/coverage-php-html site/coverage/php; fi
 	if [ -d tests/_output/coverage-js/lcov-report ]; then cp -R tests/_output/coverage-js/lcov-report site/coverage/js; fi
-	@echo "Отчёт: site/index.html"
+	@echo "Отчёт: site/index.html. Смотреть: python3 -m http.server -d site, затем http://localhost:8000"
+
+# CI: артефакты jobs (каталог ARTIFACTS, в нём reports-<job>/) раскладываются в tests/_output, как после make check.
+# Allure-результаты каждого job — в свой подкаталог: для tools/report это отдельный прогон (наборы data provider
+# нумеруются внутри него, тест из нескольких jobs считается один раз). Покрытие есть только у unit; если unit
+# не успел его записать, файлов нет, и страница пишет «нет данных».
+ARTIFACTS ?= artifacts
+report-collect: ## CI: сложить артефакты jobs из ARTIFACTS в tests/_output перед make report
+	mkdir -p $(ALLURE_RESULTS)
+	for dir in $(ARTIFACTS)/reports-*/$(ALLURE_RESULTS); do \
+		if [ -d "$$dir" ]; then \
+			job=$${dir#$(ARTIFACTS)/reports-}; job=$${job%%/*}; \
+			mkdir -p $(ALLURE_RESULTS)/$$job && cp -R "$$dir/." $(ALLURE_RESULTS)/$$job/; \
+		fi; \
+	done
+	for report in $(ARTIFACTS)/reports-unit/tests/_output/coverage-*; do \
+		if [ -e "$$report" ]; then cp -R "$$report" tests/_output/; fi; \
+	done
 
 # CI генерирует id первым шагом job и кладёт его в $GITHUB_ENV: каждый шаг — отдельный make, а id нужен один на job.
 run-id: ## Напечатать TEST_RUN_ID (сгенерированный, если не задан)

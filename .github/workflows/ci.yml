@@ -17,6 +17,10 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Минимальные права токена для всех jobs; запись в Pages и OIDC получает только job pages.
+permissions:
+  contents: read
+
 jobs:
   lint:
     if: github.event_name != 'schedule'
@@ -106,35 +110,28 @@ jobs:
         if: always()
 
   # Отчёт: результаты Allure и покрытие из артефактов unit, parallel и serial сводятся в один отчёт и главную страницу.
-  # Идёт и при упавших тестах: страница показывает, что упало. Ссылки страницы — на файлы по SHA прогона
-  # (в PR — head-коммит ветки, а не merge-коммит, которого после слияния нет).
+  # Идёт и при упавших тестах (страница показывает, что упало), но не на отменённом прогоне: его отчёт неполный,
+  # а на main он мог бы обогнать отчёт свежего прогона. Ссылки страницы — на файлы по SHA прогона: в PR это head-коммит
+  # ветки, а не merge-коммит, которого после слияния нет, поэтому job берёт из git тот же коммит.
   report:
     needs: [unit, parallel, serial]
-    if: always() && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
     runs-on: ubuntu-24.04
+    env:
+      REPORT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REPORT_SHA }}
       - uses: ./.github/actions/install
       - uses: actions/download-artifact@v8
         with:
           pattern: reports-*
           path: artifacts
-      # Каждый артефакт — tests/_output и e2e/ своего job. Allure-результаты складываются в один каталог
-      # (имена файлов — uuid, не пересекаются), покрытие есть только у unit.
-      - name: Результаты всех jobs
-        run: |
-          mkdir -p tests/_output/allure-results
-          for dir in artifacts/reports-*/tests/_output/allure-results; do
-            if [ -d "$dir" ]; then cp -R "$dir/." tests/_output/allure-results/; fi
-          done
-          if [ -d artifacts/reports-unit/tests/_output ]; then
-            cp -R artifacts/reports-unit/tests/_output/coverage-* tests/_output/
-          fi
-          ls tests/_output
+      - run: make report-collect ARTIFACTS=artifacts
       - run: make report
         env:
           REPORT_REPO: ${{ github.server_url }}/${{ github.repository }}
-          REPORT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/upload-artifact@v7
         with:
           name: site
@@ -145,13 +142,18 @@ jobs:
           path: site/
 
   # Публикация на GitHub Pages только с main. Один раз вручную: Settings → Pages → Source: «GitHub Actions».
+  # Отдельный job: права pages: write и id-token: write получает один шаг deploy без checkout и стороннего кода,
+  # а environment github-pages (по умолчанию только main) не роняет report в PR.
   pages:
     needs: report
-    if: always() && needs.report.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: ${{ !cancelled() && needs.report.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     permissions:
       pages: write
       id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}

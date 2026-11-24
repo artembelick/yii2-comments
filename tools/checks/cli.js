@@ -24,7 +24,7 @@ const SKIPPED = [
   // Страница отчёта, её собирает make report.
   "site/**",
 ].map((glob) => globToRegExp(glob));
-const PLAN_DIR = "docs/test-plans";
+export const PLAN_DIR = "docs/test-plans";
 /** Коды выхода. */
 export const EXIT_OK = 0;
 export const EXIT_VIOLATIONS = 1;

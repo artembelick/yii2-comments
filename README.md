@@ -22,7 +22,7 @@ printf '%s\n' 'пароль-админа' | docker compose exec -T php ./yii adm
 |---|---|
 | `make up` | Поднять dev-стенд |
 | `make check` | Все проверки на свежем тестовом стенде: lint → unit → smoke → regression → e2e |
-| `make report` | После `make check`: отчёт Allure, покрытие и страница отчёта в `site/index.html` |
+| `make report` | После `make check`: отчёт Allure, покрытие и страница отчёта в `site/`; смотреть через `python3 -m http.server -d site` |
 | `make help` | Все цели |
 
 ## Наборы тестов
