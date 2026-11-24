@@ -1,0 +1,10 @@
+.DS_Store
+/vendor/
+node_modules/
+runtime/
+/e2e/test-results/
+/e2e/playwright-report/
+tests/_output/
+coverage/
+.env
+.env.test.local
