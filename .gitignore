@@ -1,8 +1,11 @@
 .DS_Store
 /vendor/
 node_modules/
-runtime/
-!/ws/runtime/
+# Рабочие каталоги Yii. Без общего правила runtime/: оно прятало ws/runtime и фикстуры tools/checks.
+/common/runtime/
+/frontend/runtime/
+/backend/runtime/
+/console/runtime/
 .composer-cache/
 .env
 .env.test.local
