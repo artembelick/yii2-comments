@@ -51,6 +51,7 @@
 | `admin.restored` | Комментарий восстановлен. | Флэш |
 | `admin.already_active` | Комментарий уже активен. | Флэш |
 | `admin.edit_deleted` | Сначала восстановите комментарий. | Флэш, ответ 409 |
+| `admin.unknown_tab` | Неизвестная вкладка. | Ответ 400 на `?status=` вне списка вкладок |
 | `admin.confirm.delete` | Удалить комментарий? | Подтверждение |
 | `admin.confirm.restore` | Восстановить комментарий? | Подтверждение |
 | `admin.audit.updated` | изменил: {login} | Строка списка |
@@ -59,6 +60,17 @@
 | `ws.status.online` | Онлайн | Индикатор |
 | `ws.status.reconnecting` | Переподключение… | Индикатор |
 | `ws.status.offline` | Отключено | Индикатор |
+
+## Консоль
+
+Команда `admin/create` (UNIT-CLI-01, CLI-02). Ошибки валидации печатаются в stderr по одной на строку.
+
+| Ключ | Текст | Где |
+|---|---|---|
+| `cli.admin.created` | Админ {username} создан. | stdout после создания |
+| `cli.admin.username_invalid` | Логин: от 3 до 64 символов, только латиница, цифры, «_», «.» и «-». | stderr |
+| `cli.admin.username_taken` | Логин {username} уже занят. | stderr |
+| `cli.admin.password_too_short` | Пароль: не короче {min} символов. | stderr |
 
 ## Интерфейс
 

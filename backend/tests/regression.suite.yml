@@ -3,8 +3,20 @@ suite_namespace: backend\tests\regression
 actor: RegressionTester
 modules:
   enabled:
+    - Asserts
     - PhpBrowser:
         url: '%ADMIN_URL%'
+        # curl сам резолвит *.localhost в 127.0.0.1 и DNS не спрашивает. На стенде оба хоста — это nginx.
+        curl:
+          CURLOPT_CONNECT_TO: ['::nginx:']
     - REST:
         depends: PhpBrowser
         url: '%ADMIN_URL%'
+    # Только фикстуры: данные-предусловия пишутся в БД стенда без транзакции и без очистки (README, «Работа с данными»).
+    - Yii2:
+        configFile: ../common/config/test.php
+        applicationClass: yii\console\Application
+        part: [orm, fixtures]
+        transaction: false
+        cleanup: false
+    - common\tests\_support\FixturesModule

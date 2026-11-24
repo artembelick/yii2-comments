@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use common\web\PlaceholderController;
+use common\models\User;
 use yii\log\FileTarget;
 use yii\redis\Session;
 
@@ -14,10 +14,7 @@ return [
     'name' => 'Админка комментариев',
     'basePath' => dirname(__DIR__),
     'controllerNamespace' => 'backend\controllers',
-    'defaultRoute' => 'placeholder/index',
-    'controllerMap' => [
-        'placeholder' => PlaceholderController::class,
-    ],
+    'defaultRoute' => 'comment/index',
     'components' => [
         'request' => [
             'cookieValidationKey' => $env('BACKEND_COOKIE_KEY'),
@@ -30,10 +27,21 @@ return [
             'keyPrefix' => 'session:',
             'cookieParams' => ['httponly' => true, 'samesite' => 'Lax'],
         ],
+        'user' => [
+            'identityClass' => User::class,
+            'enableAutoLogin' => false,
+            'loginUrl' => ['auth/login'],
+        ],
+        // Маршруты админки (docs/test-plans/unit.md, «Веб-слой»). Всё, что не описано, — 404.
         'urlManager' => [
             'enablePrettyUrl' => true,
             'showScriptName' => false,
-            'enableStrictParsing' => false,
+            'enableStrictParsing' => true,
+            'rules' => [
+                '' => 'comment/index',
+                'login' => 'auth/login',
+                'logout' => 'auth/logout',
+            ],
         ],
         'log' => [
             'traceLevel' => YII_DEBUG ? 3 : 0,

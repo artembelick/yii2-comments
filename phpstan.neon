@@ -22,6 +22,11 @@ parameters:
         analyse:
             # Генерирует Codeception, правится только через `codecept build`.
             - */tests/_support/_generated/*
+    ignoreErrors:
+        # Провайдеры данных Cest вызывает Codeception по атрибуту DataProvider, phpstan этих вызовов не видит.
+        -
+            identifier: method.unused
+            path: */tests/regression/*Cest.php
     bootstrapFiles:
         - vendor/yiisoft/yii2/Yii.php
         - common/config/bootstrap.php

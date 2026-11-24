@@ -51,6 +51,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/install
       - run: make stand-up
+      - run: make admin
       - run: make test-smoke
       - run: make test-regression-parallel
       - run: make test-regression-ws-parallel
@@ -71,6 +72,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/install
       - run: make stand-up
+      - run: make admin
       - run: make test-smoke
       - run: make test-regression-pristine
       - run: make test-regression-exclusive

@@ -28,6 +28,9 @@
     "max-params": ["error", 5],
     "complexity": ["error", 10],
     "import/max-dependencies": ["error", { "max": 20 }],
+    // Тип и значение из одного модуля импортируются двумя строками: import/consistent-type-specifier-style
+    // требует отдельный `import type`, а без этой опции правило считает его дубликатом.
+    "no-duplicate-imports": ["error", { "allowSeparateTypeImports": true }],
     // 0, 1 и -1 — пустота, первый элемент и сдвиг на единицу, а не магические числа. Остальное — именованные константы.
     "no-magic-numbers": ["error", { "ignore": [0, 1, -1], "ignoreArrayIndexes": true, "ignoreDefaultValues": true }],
 
@@ -120,6 +123,20 @@
       "files": ["e2e/support/**"],
       "rules": {
         "no-empty-pattern": "off"
+      }
+    },
+    {
+      // Playwright ищет тесты по *.spec.ts (testMatch в e2e/playwright.config.ts), а правило знает только имена Vitest.
+      "files": ["e2e/tests/**"],
+      "rules": {
+        "vitest/consistent-test-filename": "off"
+      }
+    },
+    {
+      // Строки фабрик — это строки таблиц: null в них и есть SQL NULL.
+      "files": ["e2e/support/factories.ts"],
+      "rules": {
+        "unicorn/no-null": "off"
       }
     },
     {

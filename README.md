@@ -23,19 +23,25 @@ make up
 
 Имена `*.localhost` браузеры резолвят в `127.0.0.1` сами, править `/etc/hosts` не нужно. `.env` создаётся из `.env.example` при первом `make up`. Список переменных и назначение каждой — в `.env.example`.
 
+Админа для входа в админку создаёт консольная команда. Пароль (не короче 12 символов) читается из STDIN, чтобы не попасть в историю shell и список процессов:
+
+```bash
+printf '%s\n' 'пароль-админа' | docker compose exec -T php ./yii admin/create anna
+```
+
 ## Проверки
 
 ```bash
 make check
 ```
 
-`make check` идёт от быстрого к медленному: lint → unit → smoke → regression → e2e. Первый красный шаг останавливает цепочку. Интеграционные наборы работают на отдельном тестовом стенде (compose-проект `comments-test`, `.env.test`): `make check` поднимает его с чистой БД и после прогона сносит. Dev-данные не затрагиваются.
+`make check` идёт от быстрого к медленному: lint → unit → smoke → regression → e2e. Перед smoke `make admin` создаёт админа для smoke из `.env.test`. Первый красный шаг останавливает цепочку. Интеграционные наборы работают на отдельном тестовом стенде (compose-проект `comments-test`, `.env.test`): `make check` поднимает его с чистой БД и после прогона сносит. Dev-данные не затрагиваются.
 
 | Цель | Что делает |
 |---|---|
 | `make lint` | phpstan, php-cs-fixer, rector `--dry-run`, phpcs, `composer validate`, oxlint, oxfmt, tsc, hadolint, свои проверки `tools/checks` |
 | `make test-unit` | Codeception unit (pcov) и Vitest, порог покрытия 100% |
-| `make test-smoke`, `make test-regression`, `make test-e2e` | Интеграционные наборы на поднятом тестовом стенде (`make stand-up`) |
+| `make test-smoke`, `make test-regression`, `make test-e2e` | Интеграционные наборы на поднятом тестовом стенде (`make stand-up`, затем `make admin` для smoke) |
 | `make coverage` | Отчёты покрытия в `tests/_output` |
 | `make fix` | Автоисправление стиля |
 | `make help` | Все цели |

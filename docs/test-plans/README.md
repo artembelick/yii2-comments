@@ -65,7 +65,7 @@ WS-клиент написан на чистом JS без сборки, но с
 
 ## Хосты на стенде
 
-Публичная часть и админка живут на двух именах: `comments.localhost` и `admin.comments.localhost`. В сети compose у контейнера nginx есть alias'ы на оба имени, поэтому Codeception из php-контейнера ходит по ним как обычно. Chromium резолвит любой `*.localhost` в собственный 127.0.0.1 и DNS не спрашивает, поэтому Playwright запускает его с `--host-resolver-rules="MAP *.localhost nginx"`. Без этого браузер в контейнере Playwright стучится сам в себя.
+Публичная часть и админка живут на двух именах: `comments.localhost` и `admin.comments.localhost`. В сети compose у контейнера nginx есть alias'ы на оба имени. Но Chromium и curl резолвят любой `*.localhost` в собственный 127.0.0.1 и DNS не спрашивают. Поэтому Playwright запускает Chromium с `--host-resolver-rules="MAP *.localhost nginx"`, а PhpBrowser в REST-regression передаёт curl `CURLOPT_CONNECT_TO: ['::nginx:']`. Без этого клиент в контейнере стучится сам в себя.
 
 ## Где лежат тесты
 

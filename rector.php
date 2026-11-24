@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use Rector\Config\RectorConfig;
+use Rector\Php81\Rector\Property\ReadOnlyPropertyRector;
 use Rector\PHPUnit\CodeQuality\Rector\Class_\PreferPHPUnitThisCallRector;
+use Rector\Privatization\Rector\Property\PrivatizeFinalClassPropertyRector;
 
 // Запускается в режиме --dry-run: rector не правит код, а роняет lint, если нашёл что улучшить.
 return RectorConfig::configure()
@@ -22,6 +24,10 @@ return RectorConfig::configure()
         // Конфликтует с phpstan-strict-rules (staticMethod.dynamicCall): assert* — статические методы,
         // поэтому вызываем их через self::, как требует phpstan и php-cs-fixer (php_unit_test_case_static_method_calls).
         PreferPHPUnitThisCallRector::class,
+        // Codeception записывает актора в свойство $tester unit-теста из базового класса Unit:
+        // private или readonly свойство он заполнить не может.
+        PrivatizeFinalClassPropertyRector::class => ['*/tests/unit/*'],
+        ReadOnlyPropertyRector::class => ['*/tests/unit/*'],
     ])
     ->withPhpSets(php83: true)
     ->withPreparedSets(

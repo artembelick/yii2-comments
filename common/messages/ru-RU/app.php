@@ -3,4 +3,35 @@
 declare(strict_types=1);
 
 // Единственная категория переводов. Ключи и тексты совпадают с tests/_data/messages.json (UNIT-MSG-01).
-return [];
+return [
+    'login.username_required' => 'Укажите логин.',
+    'login.password_required' => 'Укажите пароль.',
+    'login.invalid' => 'Неверный логин или пароль.',
+    'login.too_many_attempts' => 'Слишком много попыток входа. Попробуйте через 15 минут.',
+    'login.unavailable' => 'Вход временно недоступен. Попробуйте позже.',
+    'login.title' => 'Вход в админку',
+    'login.username' => 'Логин',
+    'login.password' => 'Пароль',
+    'login.submit' => 'Войти',
+    'admin.title' => 'Комментарии',
+    'admin.logout' => 'Выйти',
+    'admin.tab.active' => 'Активные',
+    'admin.tab.deleted' => 'Удалённые',
+    'admin.empty.active' => 'Активных комментариев нет.',
+    'admin.empty.deleted' => 'Удалённых комментариев нет.',
+    'admin.col.author' => 'Автор',
+    'admin.col.text' => 'Текст',
+    'admin.col.created' => 'Создан',
+    'feed.title' => 'Комментарии',
+    'form.name' => 'Имя',
+    'form.text' => 'Комментарий',
+    'form.submit' => 'Отправить',
+    'comment.created' => 'Комментарий опубликован.',
+    'ws.status.label' => 'Связь',
+    'ws.status.online' => 'Онлайн',
+    'admin.unknown_tab' => 'Неизвестная вкладка.',
+    'cli.admin.created' => 'Админ {username} создан.',
+    'cli.admin.username_invalid' => 'Логин: от 3 до 64 символов, только латиница, цифры, «_», «.» и «-».',
+    'cli.admin.username_taken' => 'Логин {username} уже занят.',
+    'cli.admin.password_too_short' => 'Пароль: не короче {min} символов.',
+];

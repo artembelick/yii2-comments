@@ -5,7 +5,7 @@
 **Как:**
 - **PHP:** Codeception unit на PHPUnit, покрытие через pcov.
 - **JS:** Vitest с jsdom, покрытие через `@vitest/coverage-v8`.
-- **Порог покрытия:** 100% по строкам и методам для PHP и по строкам, функциям и веткам для JS.
+- **Порог покрытия:** 100% по строкам и методам для PHP и по строкам, функциям и веткам для JS. Покрытие PHP считается по приложениям: класс из `common` покрывают тесты `common/tests`, вызовы из тестов `backend` в него не засчитываются.
 
 **Когда:** на pre-push, в CI на каждый push и в `make check`.
 
@@ -197,6 +197,7 @@ public function isBlocked(): bool
 | UNIT-USER-02 | `findIdentityByAccessToken` выбрасывает `NotSupportedException` |
 | UNIT-USER-03 | `validatePassword` возвращает true для верного пароля и false для неверного |
 | UNIT-USER-04 | `validateAuthKey` сравнивает ключ за постоянное время |
+| UNIT-USER-05 | `isBlocked` возвращает true для статуса «заблокирован» и false для активного |
 
 ### `common\repositories\UserRepositoryInterface` и `ActiveRecordUserRepository`
 
@@ -214,6 +215,7 @@ public function setPasswordHash(int $id, string $hash, DateTimeImmutable $now): 
 | UNIT-UREPO-02 | `create` логина, который отличается от существующего только регистром, падает на уникальном индексе |
 | UNIT-UREPO-03 | `findActiveById` не находит заблокированного |
 | UNIT-UREPO-04 | `setStatus` и `setPasswordHash` меняют поле и `updated_at` |
+| UNIT-UREPO-05 | `create` сохраняет активного админа с переданными логином, хэшем, `auth_key` и временем в `created_at` и `updated_at` |
 
 ### `common\services\CommentSerializer`
 
@@ -274,7 +276,7 @@ public function restore(int $id, User $admin): bool  // false — уже акт�
 
 ## 3. Безопасность
 
-### `common\security\RateLimiter`
+### `common\security\RateLimiterInterface` и `RateLimiter`
 
 ```php
 public function hit(string $key, int $limit, int $windowSeconds): bool // true — в пределах лимита
@@ -282,7 +284,7 @@ public function isExceeded(string $key, int $limit): bool
 public function reset(string $key): void
 ```
 
-Фиксированное окно. Ключи: `rate-limit:comment:{ip}` (5 за 60 секунд) и `rate-limit:login:{lower(login)}:{ip}` (5 за 900 секунд). IP берётся только из `REMOTE_ADDR`.
+Фиксированное окно. Вызывающий код передаёт ключ без префикса (`comment:{ip}`, `login:{lower(login)}:{ip}`), `RateLimiter` сам кладёт его под `rate-limit:`: в Redis это `rate-limit:comment:{ip}` (5 за 60 секунд) и `rate-limit:login:{lower(login)}:{ip}` (5 за 900 секунд). IP берётся только из `REMOTE_ADDR`. Форма входа и контроллеры получают интерфейс: в их тестах лимит — мок.
 
 | ID | Поведение (мок Redis) |
 |---|---|
@@ -292,19 +294,31 @@ public function reset(string $key): void
 | UNIT-RL-04 | `reset` выполняет DEL ключа |
 | UNIT-RL-05 | Если Redis недоступен, все методы выбрасывают `RateLimiterUnavailableException`. Что делать дальше, решает вызывающий код: форма гостя пропускает запрос (UNIT-FC), вход отказывает (UNIT-LOGIN-07) |
 
+### `common\redis\RedisClientInterface` и `YiiRedisClient`
+
+Адаптер над `yiisoft/yii2-redis`: код зависит от интерфейса, unit-тесты мокают его, а не компонент. Набор команд растёт вместе с потребителями (INCR, EXPIRE, GET, DEL — для лимита).
+
+| ID | Поведение (мок `yii\redis\Connection`) |
+|---|---|
+| UNIT-RDS-01 | Провайдер методов: каждый отправляет свою команду с аргументами и приводит ответ к типу интерфейса (`incr` → int, `get` → строка или null) |
+| UNIT-RDS-02 | Ошибка соединения `yii\db\Exception` → `RedisUnavailableException` |
+
 ### `backend\forms\LoginForm`
 
 ```php
+public function __construct(yii\web\User $webUser, yii\web\Session $session, UserRepositoryInterface $users, RateLimiterInterface $limiter)
 public string $username; public string $password;
-public function login(): LoginResult // enum Success | Invalid | TooManyAttempts | Unavailable
+public function login(string $ip): LoginResult // enum Success | Invalid | TooManyAttempts | Unavailable
 ```
+
+IP передаёт контроллер (`Request::getRemoteIP()`, то есть `REMOTE_ADDR`): форма не читает запрос сама.
 
 | ID | Поведение (моки: UserRepository, RateLimiter, компонент user, сессия) |
 |---|---|
 | UNIT-LOGIN-01 | Пустые поля → ошибки `login.username_required` и `login.password_required`, `login()` не вызывает репозиторий |
-| UNIT-LOGIN-02 | Лимит исчерпан → `TooManyAttempts`; пароль не проверяется, счётчик не растёт |
-| UNIT-LOGIN-03 | Верные данные активного админа → `Success`. Счётчик сброшен, вызван `user->login()`, id сессии перегенерирован, в сессию записан `auth_key` |
-| UNIT-LOGIN-04 | Провайдер неудач: неверный пароль, несуществующий логин, заблокированный админ → `Invalid`, ошибка `login.invalid`, счётчик вырос на 1 |
+| UNIT-LOGIN-02 | Попытка засчитывается через `hit` до проверки пароля; `hit` вернул false (лимит исчерпан) → `TooManyAttempts`, пароль не проверяется. Решение по значению INCR, а не по отдельному GET: параллельные запросы не проскакивают мимо лимита |
+| UNIT-LOGIN-03 | Верные данные активного админа → `Success`. Попытка засчитана, затем счётчик сброшен, вызван `user->login()`, в сессию записан `auth_key`. Id сессии перегенерирует сам `user->login()`, это проверяет REG-A-11 |
+| UNIT-LOGIN-04 | Провайдер неудач: неверный пароль, несуществующий логин, заблокированный админ → `Invalid`, ошибка `login.invalid`, счётчик вырос на 1 и не сброшен |
 | UNIT-LOGIN-05 | Для несуществующего логина `password_verify` всё равно выполняется по фиктивному хэшу |
 | UNIT-LOGIN-06 | Логин передаётся в репозиторий как есть, а ключ лимита строится от `lower(login)` |
 | UNIT-LOGIN-07 | `RateLimiterUnavailableException` → `Unavailable` (контроллер отвечает 503 с `login.unavailable`), пароль не проверяется, ошибка пишется в лог |
@@ -372,14 +386,15 @@ public function changePassword(string $username, string $password): void
 
 ### `console\controllers\AdminController`
 
-Команды `admin/create <login>`, `admin/block <login>`, `admin/unblock <login>`, `admin/password <login>`. Пароль читается из STDIN через `PasswordReaderInterface`.
+Команды `admin/create <login>`, `admin/block <login>`, `admin/unblock <login>`, `admin/password <login>`. Пароль — первая строка STDIN: `printf '%s\n' "$PASSWORD" | ./yii admin/create anna`. Потоки STDIN, STDOUT и STDERR — свойства контроллера `input`, `output` и `errorOutput`, в тестах это потоки `php://memory`. Отдельный `PasswordReaderInterface` не понадобился.
 
-| ID | Поведение (моки: сервис и PasswordReader) |
+| ID | Поведение (настоящий `AdminAccountService`; моки: UserRepository и часы) |
 |---|---|
 | UNIT-CLI-01 | Успех → код 0 и строка-подтверждение в stdout |
 | UNIT-CLI-02 | `InvalidAdminDataException` → код 1, ошибки в stderr |
 | UNIT-CLI-03 | `AdminNotFoundException` → код 2 |
-| UNIT-CLI-04 | `create` и `password` читают пароль из PasswordReader и никогда не печатают его |
+| UNIT-CLI-04 | `create` и `password` читают пароль из STDIN и никогда не печатают его |
+| UNIT-CLI-05 | Поток ввода или вывода не открыт (например, закрыт) → `LogicException`. Проверка явная, не `assert()`: в production `assert` выключен |
 
 ---
 
@@ -420,7 +435,7 @@ public function changePassword(string $username, string $password): void
 | ID | Поведение |
 |---|---|
 | UNIT-AUTH-01 | `login` через GET от гостя → форма; от вошедшего → редирект на список |
-| UNIT-AUTH-02 | `Success` → редирект на `returnUrl`, если это относительный путь этого же хоста; иначе на список. Провайдер `returnUrl`: `/comments/5/edit` → туда; `https://evil.example`, `//evil.example`, `javascript:alert(1)`, `/\evil.example` → список |
+| UNIT-AUTH-02 | `Success` → редирект на `returnUrl`, если это относительный путь этого же хоста; иначе на список. Провайдер `returnUrl`: `/comments/5/edit` → туда; `https://evil.example`, `//evil.example`, `javascript:alert(1)`, `/\evil.example`, управляющие символы и пробелы (`/\t/evil.example`, `/\n/evil.example`, NUL в пути) → список |
 | UNIT-AUTH-03 | Провайдер результатов: `Invalid` → 422 и форма; `TooManyAttempts` → 429 и `login.too_many_attempts`; `Unavailable` → 503 и `login.unavailable` |
 | UNIT-AUTH-04 | `logout` вызывает `SessionTerminator::sessionEnded(id текущей сессии)` до `user->logout()`, затем редирект на логин |
 | UNIT-AUTH-05 | `behaviors()`: `login` доступен гостям, `logout` — вошедшим и только через POST |
