@@ -19,6 +19,11 @@ PHP_RUN := $(STAND) run --rm --no-deps -T php
 NODE_RUN := $(STAND) run --rm --no-deps -T node
 # На поднятом стенде.
 PHP_STAND := $(STAND) exec -T php
+# php-fpm пишет от www-data, а /app — bind mount с владельцем с хоста. На Linux (CI) каталоги из git
+# приходят с 755 и чужим владельцем, и AssetManager отвечает 500 «directory is not writable».
+# Docker Desktop на macOS права в bind mount не проверяет, поэтому локально это не видно.
+# Как yii init в шаблонах Yii: web/assets открыт на запись после подъёма стенда.
+CHMOD_WEB_ASSETS := chmod 0777 frontend/web/assets backend/web/assets
 # Пустые проекты Playwright не падают, пока в них нет тестов: smoke и e2e-parallel заполняет срез 02,
 # REG-WS — срез 04. Срез 04 убирает флаг: проект без тестов значит сломанный testDir.
 PLAYWRIGHT := $(STAND) run --rm -T playwright npx playwright test --pass-with-no-tests
@@ -28,7 +33,7 @@ CODECEPT_SHARD := $(if $(SHARD),--shard $(SHARD),)
 PLAYWRIGHT_SHARD := $(if $(SHARD),--shard=$(SHARD),)
 
 .PHONY: help up down install migrate admin lint lint-php lint-js lint-docker lint-checks lint-php-files lint-js-files lint-js-types fix \
-	stand-up stand-down test-unit test-unit-php test-unit-js test-smoke test-regression \
+	stand-up stand-down stand-logs test-unit test-unit-php test-unit-js test-smoke test-regression \
 	test-regression-pristine test-regression-parallel test-regression-exclusive \
 	test-regression-ws-parallel test-regression-ws-exclusive test-e2e test-e2e-parallel test-e2e-exclusive \
 	coverage check
@@ -43,6 +48,7 @@ help: ## Список целей
 
 up: .env ## Поднять dev-стенд и применить миграции
 	$(DEV) up -d --build --wait
+	$(DEV) exec -T php $(CHMOD_WEB_ASSETS)
 	$(DEV) exec -T php ./yii migrate --interactive=0
 
 down: ## Остановить dev-стенд
@@ -105,10 +111,14 @@ fix: ## Автоисправление стиля
 
 stand-up: ## Поднять тестовый стенд и применить миграции
 	$(STAND) up -d --build --wait php ws nginx postgres redis
+	$(PHP_STAND) $(CHMOD_WEB_ASSETS)
 	$(PHP_STAND) ./yii migrate --interactive=0
 
 stand-down: ## Снести тестовый стенд вместе с данными
 	$(STAND) down -v --remove-orphans
+
+stand-logs: ## Логи контейнеров тестового стенда (CI печатает их при падении)
+	$(STAND) logs --no-color --timestamps php ws nginx
 
 # --- Тесты -------------------------------------------------------------------
 

@@ -56,6 +56,9 @@ jobs:
       - run: make test-regression-parallel
       - run: make test-regression-ws-parallel
       - run: make test-e2e-parallel
+      # Логи php-fpm, ws и nginx: при 500 в них стек, которого нет в отчёте Playwright.
+      - run: make stand-logs
+        if: failure()
       - uses: ./.github/actions/reports
         if: always()
         with:
@@ -78,6 +81,9 @@ jobs:
       - run: make test-regression-exclusive
       - run: make test-regression-ws-exclusive
       - run: make test-e2e-exclusive
+      # Логи php-fpm, ws и nginx: при 500 в них стек, которого нет в отчёте Playwright.
+      - run: make stand-logs
+        if: failure()
       - uses: ./.github/actions/reports
         if: always()
         with:
