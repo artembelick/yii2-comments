@@ -83,6 +83,23 @@ test("REG-WS-11: токен выдан, затем смена пароля ад�
   expect([await socket.messagesUntilClose(), await socket.closeCode()]).toStrictEqual([[], UNAUTHORIZED]);
 });
 
+test("REG-WS-11: токен выдан, затем админа заблокировали → auth этим токеном закрыт 4401, auth.ok не приходит", async ({
+  adminAccount,
+  adminApi,
+  ws,
+  db,
+  redis,
+  faker,
+}) => {
+  const token = await issueWsToken(adminApi);
+  await blockAdmin(db, redis, faker, adminAccount);
+  const socket = await ws.open();
+
+  socket.send({ type: "auth", token });
+
+  expect([await socket.messagesUntilClose(), await socket.closeCode()]).toStrictEqual([[], UNAUTHORIZED]);
+});
+
 test("REG-WS-12: Админ 1 заблокирован в БД, а access.revoked до WS не дошёл → на следующий ping соединение закрыто 4403, pong не приходит", async ({
   adminAccount,
   adminApi,

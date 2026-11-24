@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace backend\tests\regression;
 
+use backend\controllers\CommentController;
 use backend\tests\RegressionTester;
 use Codeception\Attribute\DataProvider;
 use Codeception\Attribute\Group;
 use Codeception\Example;
+use common\models\Comment;
 use common\tests\_support\Examples;
 use Yii;
 use yii\db\Expression;
@@ -33,6 +35,89 @@ final class CommentListCest
         $I->assertSame(array_slice($newestActiveFirst, 20, 1), array_slice($pages['active2'], 0, 1));
         $I->assertSame($newestDeletedFirst, array_slice($pages['deleted1'], 0, 2));
         $I->assertSame([], array_values(array_intersect($newestActiveFirst, $pages['deleted1'])));
+    }
+
+    /**
+     * REG-A-30a: ?page= у списка админки как у ленты гостя: 2 → 21-й первым, abc, -1 и page[]=1 → первая, всегда 200
+     *
+     * @param Example<string, mixed> $example
+     */
+    #[Group('exclusive')]
+    #[DataProvider('pageQueries')]
+    public function listPageParameterBehavesLikeFeed(RegressionTester $I, Example $example): void
+    {
+        $newestFirst = array_reverse($I->haveComments(21));
+        $I->amSignedInAs($I->haveAdmin());
+
+        $texts = $I->grabTextsOfPage('/?' . Examples::string($example, 'query'));
+
+        $I->assertSame(array_slice($newestFirst, Examples::int($example, 'offset'), 1), array_slice($texts, 0, 1));
+        $I->assertCount(20, $texts);
+        // Номер открытой страницы клиент берёт из data-page: по нему он перечитывает список после переподключения.
+        $I->assertSame((string) Examples::int($example, 'page'), $I->grabAttributeFrom('[data-ws-url]', 'data-page'));
+    }
+
+    /**
+     * REG-A-30a: ?page= у /api/comments как у ленты гостя: 2 → 21-й первым, abc, -1 и page[]=1 → первая, всегда 200
+     *
+     * @param Example<string, mixed> $example
+     */
+    #[Group('exclusive')]
+    #[DataProvider('pageQueries')]
+    public function jsonPageParameterBehavesLikeFeed(RegressionTester $I, Example $example): void
+    {
+        $newestFirst = array_reverse($I->haveComments(21));
+        $I->amSignedInAs($I->haveAdmin());
+
+        $I->sendGet('/api/comments?' . Examples::string($example, 'query'));
+
+        $texts = $I->grabDataFromResponseByJsonPath('$.items[*].text');
+        $I->seeResponseCodeIs(200);
+        $I->assertSame(array_slice($newestFirst, Examples::int($example, 'offset'), 1), array_slice($texts, 0, 1));
+        $I->assertCount(20, $texts);
+        $I->assertSame([Examples::int($example, 'page')], $I->grabDataFromResponseByJsonPath('$.page'));
+    }
+
+    /**
+     * Значение ?page=, номер открытой страницы и какой из 21 комментария (новые сверху) на ней первым.
+     *
+     * @return array<string, array{query: string, page: int, offset: int}>
+     */
+    private function pageQueries(): array
+    {
+        return [
+            '?page=2 → 21-й первым на второй странице' => ['query' => 'page=2', 'page' => 2, 'offset' => 20],
+            '?page=abc → первая' => ['query' => 'page=abc', 'page' => 1, 'offset' => 0],
+            '?page=-1 → первая' => ['query' => 'page=-1', 'page' => 1, 'offset' => 0],
+            '?page[]=1 → первая' => ['query' => 'page[]=1', 'page' => 1, 'offset' => 0],
+        ];
+    }
+
+    /** REG-A-30a: ?page=999 у списка админки → последняя страница со строками, 200 */
+    #[Group('exclusive')]
+    public function listPageBeyondRangeShowsLastPage(RegressionTester $I): void
+    {
+        $I->haveComments(21);
+        $lastPage = (int) ceil((int) Comment::find()->where(['deleted_at' => null])->count() / CommentController::PER_PAGE);
+        $I->amSignedInAs($I->haveAdmin());
+
+        $texts = $I->grabTextsOfPage('/?page=999');
+
+        $I->assertNotSame([], $texts);
+        $I->assertSame((string) $lastPage, $I->grabAttributeFrom('[data-ws-url]', 'data-page'));
+    }
+
+    /** REG-A-30a: ?page=999 у /api/comments → последняя страница со строками, 200 */
+    #[Group('exclusive')]
+    public function jsonPageBeyondRangeShowsLastPage(RegressionTester $I): void
+    {
+        $I->haveComments(21);
+        $I->amSignedInAs($I->haveAdmin());
+
+        $page = $I->grabJsonList('active', 999);
+
+        $I->assertNotSame([], $page['items']);
+        $I->assertSame($page['pageCount'], $page['page']);
     }
 
     /** REG-A-31: у комментария, изменённого Админом 1, «изменил: <его логин>», у удалённого Админом 2 — «удалил: <его логин>» */

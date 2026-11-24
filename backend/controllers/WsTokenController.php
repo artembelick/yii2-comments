@@ -52,6 +52,9 @@ final class WsTokenController extends Controller
             return $this->asJson(['error' => 'unavailable']);
         }
 
+        // Токен одноразовый и короткоживущий: ни браузер, ни прокси не должны его хранить (REG-A-60b).
+        $this->response->headers->set('Cache-Control', 'no-store');
+
         return $this->asJson(['token' => $token]);
     }
 }

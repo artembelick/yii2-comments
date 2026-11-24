@@ -19,3 +19,12 @@ settings:
   # Deprecation и warning PHP становятся ошибками теста.
   convert_deprecations_to_exceptions: true
   error_level: E_ALL
+# Allure-результаты всех приложений — в один каталог: make report сводит их с Vitest и Playwright.
+extensions:
+  enabled:
+    - Qameta\Allure\Codeception\AllureCodeception
+  config:
+    Qameta\Allure\Codeception\AllureCodeception:
+      # Путь считается от output каждого приложения (common/tests/_output и т. д.), ведущий / адаптер срезает.
+      # Три уровня вверх — корень проекта, все приложения пишут в общий tests/_output/allure-results.
+      outputDirectory: ../../../tests/_output/allure-results

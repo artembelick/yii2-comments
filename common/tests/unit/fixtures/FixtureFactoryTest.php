@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace common\tests\unit\fixtures;
 
+use Codeception\Attribute\DataProvider;
 use Codeception\Test\Unit;
+use common\tests\_support\FixtureFactory;
 use common\tests\UnitTester;
+use Faker\Factory;
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\TestDox;
 use Yii;
 
@@ -41,6 +45,67 @@ final class FixtureFactoryTest extends Unit
 
         self::assertNotSame($first->username, $second->username);
         self::assertNotSame($first->id, $second->id);
+    }
+
+    #[TestDox('UNIT-FIX-02: при одном seed и разных TEST_RUN_ID метки разные')]
+    public function testSameSeedInDifferentRunsGivesDifferentTags(): void
+    {
+        $firstRunTag = $this->factory(seed: 42, runId: 'k3x9')->tag();
+        $secondRunTag = $this->factory(seed: 42, runId: 'p7q2')->tag();
+
+        self::assertNotSame($firstRunTag, $secondRunTag);
+    }
+
+    #[TestDox('UNIT-FIX-02: при одном seed и одном TEST_RUN_ID метки одинаковые')]
+    public function testSameSeedInSameRunGivesSameTag(): void
+    {
+        $firstTag = $this->factory(seed: 42, runId: 'k3x9')->tag();
+        $sameRunTag = $this->factory(seed: 42, runId: 'k3x9')->tag();
+
+        self::assertSame($firstTag, $sameRunTag);
+    }
+
+    #[TestDox('UNIT-FIX-03: метка — TEST_RUN_ID и 4 символа [a-z0-9] из Faker')]
+    public function testTagIsRunIdFollowedByFakerPart(): void
+    {
+        $factory = $this->factory(seed: 42, runId: 'k3x9');
+
+        $tag = $factory->tag();
+
+        self::assertMatchesRegularExpression('/^k3x9[a-z0-9]{4}$/', $tag);
+    }
+
+    #[TestDox('UNIT-FIX-03: без годного TEST_RUN_ID генератор не создаётся, сообщение называет TEST_RUN_ID')]
+    #[DataProvider('invalidRunIds')]
+    public function testInvalidRunIdIsRejected(string $runId): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/TEST_RUN_ID/');
+
+        $this->factory(seed: 42, runId: $runId);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function invalidRunIds(): array
+    {
+        return [
+            'пустой (переменная не задана)' => [''],
+            '3 символа' => ['k3x'],
+            '5 символов' => ['k3x9a'],
+            'заглавные буквы' => ['K3X9'],
+            'дефис' => ['k3-9'],
+        ];
+    }
+
+    /** Генератор с Faker на этом seed. Faker сеет общий mt_rand, поэтому метку берут сразу после создания генератора. */
+    private function factory(int $seed, string $runId): FixtureFactory
+    {
+        $faker = Factory::create('ru_RU');
+        $faker->seed($seed);
+
+        return new FixtureFactory($faker, $runId);
     }
 
     /**

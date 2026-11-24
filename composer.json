@@ -17,6 +17,7 @@
     "yiisoft/yii2-redis": "^2.1.3"
   },
   "require-dev": {
+    "allure-framework/allure-codeception": "^2.6",
     "codeception/codeception": "^5.3",
     "codeception/module-asserts": "^3.3",
     "codeception/module-phpbrowser": "^4.1",

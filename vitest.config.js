@@ -16,7 +16,8 @@ export default defineConfig({
     unstubGlobals: true,
     // ПР-5: тест без проверок падает.
     expect: { requireAssertions: true },
-    reporters: ["default", "junit"],
+    // Junit-отчёт читают tools/checks и CI, Allure-результаты сводит make report вместе с Codeception и Playwright.
+    reporters: ["default", "junit", ["allure-vitest/reporter", { resultsDir: "tests/_output/allure-results" }]],
     outputFile: { junit: "tests/_output/vitest-junit.xml" },
     projects: [
       {
@@ -37,18 +38,30 @@ export default defineConfig({
           exclude: ["tools/**/__tests__/fixtures/**"],
         },
       },
+      {
+        extends: true,
+        test: {
+          // Хелперы /e2e, которые можно проверить без стенда: правило метки (UNIT-E2E-TAG).
+          name: "e2e-support",
+          environment: "node",
+          include: ["e2e/support/__tests__/**/*.test.ts"],
+        },
+      },
     ],
     coverage: {
       provider: "v8",
-      include: ["backend/web/js/**/*.js", "tools/**/*.js"],
+      // Из хелперов /e2e без стенда проверяется только правило метки: остальное ходит в БД, Redis и браузер.
+      include: ["backend/web/js/**/*.js", "tools/**/*.js", "e2e/support/tag.ts"],
       exclude: [
         "**/__tests__/**",
         // Entry point'ы: только связывают модули, ветвлений в них нет (проверяет tools/checks, правило entrypoint-limits).
         "backend/web/js/main.js",
         "tools/checks/bin.js",
+        "tools/report/bin.js",
       ],
       thresholds: { lines: 100, functions: 100, branches: 100, statements: 100 },
-      reporter: ["text-summary", "lcov"],
+      // Репортёр lcov пишет и HTML (lcov-report), json-summary — итог для страницы отчёта.
+      reporter: ["text-summary", "lcov", "json-summary"],
       reportsDirectory: "tests/_output/coverage-js",
     },
   },

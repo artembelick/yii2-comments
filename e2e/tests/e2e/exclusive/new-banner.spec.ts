@@ -1,7 +1,8 @@
 import { logIn } from "../../../support/admin.ts";
 import { requireEnv } from "../../../support/env.ts";
-import { admin, comments, uniqueTag } from "../../../support/factories.ts";
+import { admin, comments } from "../../../support/factories.ts";
 import { message, plural } from "../../../support/messages.ts";
+import { uniqueTag } from "../../../support/tag.ts";
 import { expect, test } from "../../../support/test.ts";
 
 const PRECONDITION_COMMENTS = 25;

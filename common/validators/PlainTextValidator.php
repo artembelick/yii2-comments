@@ -10,9 +10,9 @@ use yii\base\InvalidConfigException;
 use yii\validators\Validator;
 
 /**
- * Простой текст от гостя: имя или комментарий, уже нормализованный. Ошибки берутся из каталога по префиксу
- * поля (`name.too_short`, `text.too_long`). Ошибка одна, первая по порядку: тип → обязательность →
- * недопустимые символы → многострочность → длина.
+ * Простой текст от гостя: имя или комментарий, уже нормализованный и очищенный (CommentTextNormalizer), поэтому
+ * символы валидатор не проверяет. Ошибки берутся из каталога по префиксу поля (`name.too_short`, `text.too_long`).
+ * Ошибка одна, первая по порядку: тип → обязательность → длина.
  */
 final class PlainTextValidator extends Validator
 {
@@ -21,16 +21,8 @@ final class PlainTextValidator extends Validator
 
     public int $max;
 
-    public bool $multiline = false;
-
     /** Префикс ключей сообщений: `name` или `text`. */
     public string $messagePrefix = 'text';
-
-    /**
-     * Управляющие символы категории Cc, кроме переноса строки (перенос решает multiline), и символы
-     * управления направлением текста: ими можно перевернуть соседний текст в ленте и в админке.
-     */
-    private const string INVALID_CHARS = '/[^\P{Cc}\n]|[\x{202A}-\x{202E}\x{2066}-\x{2069}]/u';
 
     /** Пустое значение тоже проверяется: обязательность и тип решает сам валидатор. */
     public $skipOnEmpty = false;
@@ -56,14 +48,6 @@ final class PlainTextValidator extends Validator
 
         if ($value === '') {
             return $this->error('required');
-        }
-
-        if (!mb_check_encoding($value, 'UTF-8') || preg_match(self::INVALID_CHARS, $value) === 1) {
-            return $this->error('invalid_chars');
-        }
-
-        if (!$this->multiline && str_contains($value, "\n")) {
-            return $this->error('multiline');
         }
 
         $length = mb_strlen($value);

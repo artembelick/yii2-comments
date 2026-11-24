@@ -15,6 +15,8 @@ return [
     'controllerNamespace' => 'frontend\controllers',
     'defaultRoute' => 'comment/index',
     'components' => [
+        // Ошибки — своим видом в layout публичной части, а не стандартным шаблоном Yii (REG-G-24).
+        'errorHandler' => ['errorAction' => 'site/error'],
         'request' => [
             'cookieValidationKey' => $env('FRONTEND_COOKIE_KEY'),
             'csrfParam' => '_csrf-frontend',

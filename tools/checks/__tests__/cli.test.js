@@ -47,6 +47,15 @@ describe("tools/checks CLI", () => {
     });
   });
 
+  it("сценарий плана без теста → код 1: сверка ID идёт в обе стороны", async () => {
+    await expect(runOn("unimplemented", [])).resolves.toStrictEqual({
+      code: 1,
+      output:
+        "test-ids: docs/test-plans/plan.md:6 E2E-01 из плана не реализован: ни одно имя теста не начинается с этого ID\n" +
+        "tools/checks: нарушений: 1\n",
+    });
+  });
+
   it("glob правила не нашёл ни одного файла → код 1: правило, которое ничего не проверяет, не должно молча проходить", async () => {
     const { code, output } = await runOn("empty", []);
 

@@ -17,7 +17,7 @@ final class WsTokenControllerTest extends Unit
 {
     private const int ADMIN_ID = 7;
 
-    #[TestDox('UNIT-WTC-01: create выдаёт токен на id админа, id сессии и его auth_key и отвечает JSON с полем token')]
+    #[TestDox('UNIT-WTC-01: create выдаёт токен на id админа, id сессии и его auth_key и отвечает JSON с полем token, Cache-Control: no-store')]
     public function testCreateIssuesTokenForAdminSession(): void
     {
         $stored = [];
@@ -33,7 +33,7 @@ final class WsTokenControllerTest extends Unit
         $response = Yii::$app->runAction('ws-token/create');
 
         self::assertInstanceOf(Response::class, $response);
-        self::assertSame(200, $response->statusCode);
+        self::assertSame([200, 'no-store'], [$response->statusCode, $response->headers->get('Cache-Control')]);
         self::assertSame(
             ['ws-token:' . $this->tokenOf($response), json_encode(['userId' => self::ADMIN_ID, 'sessionId' => Yii::$app->session->getId(), 'authKey' => 'auth-key-of-anna'])],
             $stored,

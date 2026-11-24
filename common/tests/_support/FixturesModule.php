@@ -16,13 +16,16 @@ use Yii;
 
 /**
  * Данные-предусловия для тестов на БД: строки из FixtureFactory вставляются Yii-фикстурами
- * через модуль Yii2. Faker получает seed из ID и имени теста (TestSeed), seed попадает в отчёт о падении (ДТ-2).
+ * через модуль Yii2. Faker получает seed из ID и имени теста (TestSeed), метка начинается с TEST_RUN_ID из окружения.
+ * Seed и TEST_RUN_ID попадают в отчёт о падении (ДТ-2).
  */
 final class FixturesModule extends Module
 {
     private ?FixtureFactory $factory = null;
 
     private int $seed = 0;
+
+    private string $runId = '';
 
     private int $loaded = 0;
 
@@ -33,7 +36,8 @@ final class FixturesModule extends Module
         $faker = Factory::create('ru_RU');
         $faker->seed($this->seed);
 
-        $this->factory = new FixtureFactory($faker);
+        $this->runId = (string) getenv('TEST_RUN_ID');
+        $this->factory = new FixtureFactory($faker, $this->runId);
         $this->loaded = 0;
     }
 
@@ -41,6 +45,7 @@ final class FixturesModule extends Module
     public function _failed(TestInterface $test, mixed $fail): void
     {
         $test->getMetadata()->addReport('faker-seed', (string) $this->seed);
+        $test->getMetadata()->addReport('test-run-id', $this->runId);
     }
 
     public function fixtureFactory(): FixtureFactory

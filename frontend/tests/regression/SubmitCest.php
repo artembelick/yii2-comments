@@ -258,38 +258,97 @@ final class SubmitCest
     }
 
     /**
-     * REG-G-18: перенос в имени, управляющие символы и невалидный UTF-8 → 422, а не 500
+     * REG-G-18: управляющие символы, bidi, битые байты и табуляция вырезаются или заменяются, перенос в имени → пробел, 302 и в ленте очищенное имя
      *
      * @param Example<string, mixed> $example
      */
-    #[DataProvider('invalidCharacters')]
-    public function invalidCharactersAreRejected(RegressionTester $I, Example $example): void
+    #[DataProvider('namesToClean')]
+    public function invisibleCharactersInNameAreCleaned(RegressionTester $I, Example $example): void
+    {
+        $text = 'Текст ' . $I->fixtureFactory()->tag();
+
+        $I->postComment(['name' => Examples::string($example, 'name'), 'text' => $text]);
+
+        $I->seeResponseCodeIs(302);
+        $I->assertSame([['author' => Examples::string($example, 'author'), 'text' => $text]], array_slice($I->grabFeedComments('/'), 0, 1));
+    }
+
+    /**
+     * @return array<string, array{name: string, author: string}>
+     */
+    private function namesToClean(): array
+    {
+        return [
+            'перенос' => ['name' => "Ян\nМария", 'author' => 'Ян Мария'],
+            '\r\n' => ['name' => "Ян\r\nМария", 'author' => 'Ян Мария'],
+            '\0' => ['name' => "Ян\0", 'author' => 'Ян'],
+            '\x07' => ['name' => "Ян\x07Мария", 'author' => 'ЯнМария'],
+            '\t' => ['name' => "Ян\t\tМария", 'author' => 'Ян  Мария'],
+            'bidi' => ['name' => "Ян\u{202E}Мария", 'author' => 'ЯнМария'],
+            'bidi-марка RLM' => ['name' => "Ян\u{200F}Мария", 'author' => 'ЯнМария'],
+            'невалидный UTF-8' => ['name' => "Ян\xFFМария", 'author' => 'ЯнМария'],
+        ];
+    }
+
+    /**
+     * REG-G-18: управляющие символы, bidi, битые байты и табуляция в тексте вырезаются или заменяются, 302 и в ленте очищенный текст
+     *
+     * @param Example<string, mixed> $example
+     */
+    #[DataProvider('textsToClean')]
+    public function invisibleCharactersInTextAreCleaned(RegressionTester $I, Example $example): void
+    {
+        $name = 'Ян ' . $I->fixtureFactory()->tag();
+
+        $I->postComment(['name' => $name, 'text' => Examples::string($example, 'text')]);
+
+        $I->seeResponseCodeIs(302);
+        $I->assertSame([['author' => $name, 'text' => Examples::string($example, 'shown')]], array_slice($I->grabFeedComments('/'), 0, 1));
+    }
+
+    /**
+     * @return array<string, array{text: string, shown: string}>
+     */
+    private function textsToClean(): array
+    {
+        return [
+            '\0' => ['text' => "Текст\0", 'shown' => 'Текст'],
+            '\x07' => ['text' => "Текст\x07ещё", 'shown' => 'Текстещё'],
+            '\t' => ['text' => "Текст\tещё", 'shown' => 'Текст ещё'],
+            'bidi' => ['text' => "Текст\u{2066}ещё\u{2069}", 'shown' => 'Текстещё'],
+            'bidi-марки LRM и ALM' => ['text' => "Текст\u{200E}ещё\u{061C}", 'shown' => 'Текстещё'],
+            'невалидный UTF-8' => ['text' => "Текст\xC3ещё", 'shown' => 'Текстещё'],
+        ];
+    }
+
+    /**
+     * REG-G-18a: имя или текст только из вырезаемых символов → 422 и ошибка обязательности
+     *
+     * @param Example<string, mixed> $example
+     */
+    #[DataProvider('onlyCleanedCharacters')]
+    public function fieldOfCleanedCharactersOnlyIsRequired(RegressionTester $I, Example $example): void
     {
         $tag = $I->fixtureFactory()->tag();
-        $field = Examples::string($example, 'field');
-        $fields = ['name' => 'Ян ' . $tag, 'text' => 'Текст ' . $tag, $field => Examples::string($example, 'value')];
+        $latest = $I->haveComment(['author' => 'Ян ' . $tag, 'text' => 'Текст ' . $tag]);
+        $fields = ['name' => 'Ян ' . $tag, 'text' => 'Текст ' . $tag, Examples::string($example, 'field') => Examples::string($example, 'value')];
 
         $I->postComment($fields);
 
         $I->seeResponseCodeIs(422);
         $I->seeFieldError(Examples::string($example, 'error'));
+        $I->assertSame([['author' => $latest->author, 'text' => $latest->text]], array_slice($I->grabFeedComments('/'), 0, 1));
     }
 
     /**
      * @return array<string, array{field: string, value: string, error: string}>
      */
-    private function invalidCharacters(): array
+    private function onlyCleanedCharacters(): array
     {
         return [
-            'перенос в имени' => ['field' => 'name', 'value' => "Ян\nМария", 'error' => 'name.multiline'],
-            '\0 в имени' => ['field' => 'name', 'value' => "Ян\0", 'error' => 'name.invalid_chars'],
-            '\x07 в имени' => ['field' => 'name', 'value' => "Ян\x07", 'error' => 'name.invalid_chars'],
-            '\t в имени' => ['field' => 'name', 'value' => "Ян\tМария", 'error' => 'name.invalid_chars'],
-            '\0 в тексте' => ['field' => 'text', 'value' => "Текст\0", 'error' => 'text.invalid_chars'],
-            '\x07 в тексте' => ['field' => 'text', 'value' => "Текст\x07", 'error' => 'text.invalid_chars'],
-            '\t в тексте' => ['field' => 'text', 'value' => "Текст\tещё", 'error' => 'text.invalid_chars'],
-            'невалидный UTF-8 в имени' => ['field' => 'name', 'value' => "Ян\xC3\x28", 'error' => 'name.invalid_chars'],
-            'невалидный UTF-8 в тексте' => ['field' => 'text', 'value' => "Текст\xC3\x28", 'error' => 'text.invalid_chars'],
+            'имя из управляющих, bidi и битых байтов' => ['field' => 'name', 'value' => "\0\x07\u{202E}\xFF", 'error' => 'name.required'],
+            'имя из табуляций и переносов' => ['field' => 'name', 'value' => "\t\r\n\t", 'error' => 'name.required'],
+            'текст из управляющих, bidi и битых байтов' => ['field' => 'text', 'value' => "\0\x07\u{2066}\xC3", 'error' => 'text.required'],
         ];
     }
 
@@ -347,6 +406,19 @@ final class SubmitCest
         $text = 'Введённый текст ' . $I->fixtureFactory()->tag();
 
         $I->postComment(['name' => 'Я', 'text' => $text]);
+
+        $I->seeResponseCodeIs(422);
+        $I->seeFieldError('name.too_short');
+        $I->seeResponseContains('name="name" value="Я"');
+        $I->seeResponseContains('>' . $text . '</textarea>');
+    }
+
+    /** REG-G-21: ошибка валидации у значений с вырезаемыми символами → 422, форма показывает их уже очищенными */
+    public function invalidFormShowsCleanedInput(RegressionTester $I): void
+    {
+        $text = 'Введённый текст ' . $I->fixtureFactory()->tag();
+
+        $I->postComment(['name' => "\u{202E}Я\t\0", 'text' => "\x07" . $text . "\u{2066}"]);
 
         $I->seeResponseCodeIs(422);
         $I->seeFieldError('name.too_short');

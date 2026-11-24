@@ -6,7 +6,7 @@ import { checkClover } from "./coverage.js";
 import { globToRegExp } from "./glob.js";
 import { checkJunit } from "./junit.js";
 import { RULES } from "./rules/index.js";
-import { extractPlanIds } from "./rules/test-ids.js";
+import { extractPlanIds, testIds, unimplementedPlanIds } from "./rules/test-ids.js";
 
 /** @typedef {import("./rules/index.js").Rule} Rule */
 /** @typedef {{ root: string, argv: readonly string[], write: (chunk: string) => void }} CliOptions */
@@ -21,8 +21,10 @@ const SKIPPED = [
   "**/_generated/**",
   "**/web/assets/**",
   "e2e/{test-results,playwright-report}/**",
+  // Страница отчёта, её собирает make report.
+  "site/**",
 ].map((glob) => globToRegExp(glob));
-const PLAN_DIR = "docs/test-plans";
+export const PLAN_DIR = "docs/test-plans";
 /** Коды выхода. */
 export const EXIT_OK = 0;
 export const EXIT_VIOLATIONS = 1;
@@ -31,12 +33,12 @@ const USAGE =
   "использование: node tools/checks/bin.js [--allow-empty] | coverage <clover.xml> --strip=<префикс пути в отчёте> | junit <junit.xml>\n";
 
 /**
- * Все файлы дерева относительными путями через `/`, по алфавиту.
+ * Все файлы дерева относительными путями через `/`, по алфавиту. Сгенерированное и зависимости пропущены.
  *
  * @param {string} root
  * @returns {Promise<string[]>}
  */
-const listFiles = async (root) => {
+export const listFiles = async (root) => {
   const entries = await readdir(root, { recursive: true, withFileTypes: true });
 
   return entries
@@ -47,11 +49,13 @@ const listFiles = async (root) => {
 };
 
 /**
- * @param {Rule} rule
+ * Файлы, к которым применяется правило.
+ *
+ * @param {Pick<Rule, "files" | "exclude">} rule
  * @param {readonly string[]} files
  * @returns {string[]}
  */
-const filesOf = (rule, files) => {
+export const filesOf = (rule, files) => {
   const included = rule.files.map((glob) => globToRegExp(glob));
   const excluded = rule.exclude.map((glob) => globToRegExp(glob));
 
@@ -92,7 +96,14 @@ const lint = async ({ root, write }, allowEmpty) => {
       return [...empty, ...violations];
     }),
   );
-  const lines = problems.flat();
+  // Обратная сторона сверки ID. Каркас без тестов (--allow-empty) её пропускает: реализовывать ещё нечего.
+  const tests = allowEmpty ? [] : await Promise.all(filesOf(testIds, files).map(async (file) => read(file)));
+  const unimplemented = allowEmpty
+    ? []
+    : unimplementedPlanIds(plans, tests).map(
+        ({ path: plan, line, message }) => `${testIds.id}: ${plan}:${line} ${message}`,
+      );
+  const lines = [...problems.flat(), ...unimplemented];
 
   write(lines.map((line) => `${line}\n`).join(""));
   write(lines.length === 0 ? "tools/checks: нарушений нет\n" : `tools/checks: нарушений: ${lines.length}\n`);

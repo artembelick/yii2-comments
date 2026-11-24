@@ -25,7 +25,7 @@ use yii\web\Response;
 final class CommentControllerTest extends Unit
 {
     /**
-     * @param array<string, string> $params
+     * @param array<string, list<string>|string> $params
      */
     #[TestDox('UNIT-BC-01: index просит у репозитория страницу своей вкладки по 20 записей')]
     #[DataProvider('tabs')]
@@ -43,7 +43,7 @@ final class CommentControllerTest extends Unit
     }
 
     /**
-     * @return array<string, array{array<string, string>, CommentStatus, int}>
+     * @return array<string, array{array<string, list<string>|string>, CommentStatus, int}>
      */
     public static function tabs(): array
     {
@@ -52,6 +52,7 @@ final class CommentControllerTest extends Unit
             'status=active' => [['status' => 'active'], CommentStatus::Active, 1],
             'status=deleted, page=3' => [['status' => 'deleted', 'page' => '3'], CommentStatus::Deleted, 3],
             'page=abc → страница 0, репозиторий приведёт к первой' => [['page' => 'abc'], CommentStatus::Active, 0],
+            'page массивом (?page[]=1) → страница 1, а не 400' => [['page' => ['1']], CommentStatus::Active, 1],
         ];
     }
 
@@ -94,6 +95,20 @@ final class CommentControllerTest extends Unit
             'pageCount' => 2,
             'totalCount' => 21,
         ], $response->data);
+    }
+
+    #[TestDox('UNIT-BC-06: list с page массивом (?page[]=1) → страница 1, а не 400')]
+    public function testListTreatsArrayPageAsFirst(): void
+    {
+        $comments = $this->createMock(CommentRepositoryInterface::class);
+        $comments->expects(self::once())->method('page')->with(CommentStatus::Active, 1, 20)->willReturn(new CommentPage([], 0, 1, 1));
+        Yii::$container->set(CommentRepositoryInterface::class, $comments);
+        Yii::$app->user->setIdentity(new User());
+
+        $response = Yii::$app->runAction('comment/list', ['page' => ['1']]);
+
+        self::assertInstanceOf(Response::class, $response);
+        self::assertSame(200, $response->statusCode);
     }
 
     #[TestDox('UNIT-BC-06: list с неверным status → 400 и JSON с error invalid_status')]
@@ -371,7 +386,7 @@ final class CommentControllerTest extends Unit
         ];
     }
 
-    #[TestDox('UNIT-BC-07: VerbFilter — delete и restore только POST, update только GET и POST')]
+    #[TestDox('UNIT-BC-07: VerbFilter — delete и restore только POST, update только GET и POST, list только GET')]
     #[DataProvider('forbiddenVerbs')]
     public function testVerbFilterRejectsOtherMethods(string $action, string $method): void
     {
@@ -395,6 +410,7 @@ final class CommentControllerTest extends Unit
             'delete через GET' => ['delete', 'GET'],
             'restore через GET' => ['restore', 'GET'],
             'update через PUT' => ['update', 'PUT'],
+            'list через POST' => ['list', 'POST'],
         ];
     }
 

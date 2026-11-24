@@ -74,3 +74,12 @@ export function findAll(text, pattern, message) {
     message: message(match),
   }));
 }
+
+/**
+ * Пара ключ — значение для `new Map(…)`: литерал массива TypeScript вывел бы как `string[]`, а не как пару.
+ *
+ * @param {string} key
+ * @param {string} value
+ * @returns {[string, string]}
+ */
+export const pair = (key, value) => [key, value];

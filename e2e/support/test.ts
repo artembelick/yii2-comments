@@ -11,6 +11,7 @@ import { admin, connectDb } from "./factories.ts";
 import type { Admin } from "./factories.ts";
 import { seededFaker, seedFromTitle } from "./faker.ts";
 import { connectRedis, resetRateLimits } from "./redis.ts";
+import { testRunId } from "./tag.ts";
 import { openAuthenticatedWs, openWs } from "./ws.ts";
 import type { WsProbe } from "./ws.ts";
 
@@ -44,8 +45,11 @@ interface WorkerFixtures {
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   faker: async ({}, use, testInfo) => {
     const seed = seedFromTitle(testInfo.title);
-    // Seed виден в отчёте о падении.
-    testInfo.annotations.push({ type: "faker-seed", description: String(seed) });
+    // Seed и id прогона видны в отчёте о падении: по ним падение воспроизводится (ДТ-2).
+    testInfo.annotations.push(
+      { type: "faker-seed", description: String(seed) },
+      { type: "test-run-id", description: testRunId() },
+    );
     await use(seededFaker(seed));
   },
   guest: async ({ browser, redis }, use) => {

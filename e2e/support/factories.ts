@@ -2,6 +2,7 @@ import type { Faker } from "@faker-js/faker";
 import { Pool } from "pg";
 
 import { requireEnv } from "./env.ts";
+import { uniqueTag } from "./tag.ts";
 
 /**
  * Единственное место, где /e2e знает схему БД. Фабрики пишут предусловия прямо в Postgres стенда,
@@ -16,11 +17,6 @@ export function connectDb(): Pool {
     password: requireEnv("POSTGRES_PASSWORD"),
     max: 2,
   });
-}
-
-/** Уникальная метка теста: по ней тест находит свои строки и проверяет только их (ИЗ-3). */
-export function uniqueTag(faker: Faker): string {
-  return faker.string.alphanumeric({ length: 4, casing: "lower" });
 }
 
 /** Пароль всех админов из фабрики. Хэш посчитан заранее с cost 4: bcrypt на каждого админа замедлил бы тесты. */

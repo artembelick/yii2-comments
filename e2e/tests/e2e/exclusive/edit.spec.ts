@@ -1,6 +1,7 @@
 import { listRow, openAdminPage } from "../../../support/admin.ts";
-import { admin, comment, uniqueTag } from "../../../support/factories.ts";
+import { admin, comment } from "../../../support/factories.ts";
 import { message } from "../../../support/messages.ts";
+import { uniqueTag } from "../../../support/tag.ts";
 import { expect, test } from "../../../support/test.ts";
 
 test("E2E-02: правка видна второму админу и гостю", async ({ page: admin1Page, admin2Page, guest, db, faker }) => {

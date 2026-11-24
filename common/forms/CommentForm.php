@@ -39,8 +39,8 @@ final class CommentForm extends Model
     public function rules(): array
     {
         return [
-            ['name', PlainTextValidator::class, 'min' => 2, 'max' => 64, 'multiline' => false, 'messagePrefix' => 'name'],
-            ['text', PlainTextValidator::class, 'min' => 1, 'max' => 2000, 'multiline' => true, 'messagePrefix' => 'text'],
+            ['name', PlainTextValidator::class, 'min' => 2, 'max' => 64, 'messagePrefix' => 'name'],
+            ['text', PlainTextValidator::class, 'min' => 1, 'max' => 2000, 'messagePrefix' => 'text'],
         ];
     }
 

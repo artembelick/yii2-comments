@@ -14,10 +14,10 @@ $this->title = Yii::t('app', 'admin.edit.title');
 ?>
 <h1 class="h3 mb-4"><?= Html::encode($this->title) ?></h1>
 
-<?php // Имя автора админ не меняет (GLOSSARY.md): поле только для чтения и в форму не уходит.?>
+<?php // Имя автора админ не меняет (GLOSSARY.md): поле disabled — серое, без фокуса, вне формы и браузером не отправляется.?>
 <div class="mb-3">
     <label class="form-label" for="comment-author"><?= Html::encode(Yii::t('app', 'admin.edit.author')) ?></label>
-    <input class="form-control" id="comment-author" type="text" value="<?= Html::encode($comment->author) ?>" readonly>
+    <input class="form-control" id="comment-author" type="text" value="<?= Html::encode($comment->author) ?>" disabled>
 </div>
 
 <?php $form = ActiveForm::begin(['id' => 'comment-edit-form', 'action' => ['comment/update', 'id' => $comment->id], 'enableClientValidation' => false]) ?>

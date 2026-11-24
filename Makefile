@@ -5,7 +5,13 @@
 #                 Интеграционные наборы идут на отдельном тестовом стенде (compose-проект comments-test),
 #                 который make check поднимает и после прогона сносит.
 # Повтор порядка: SEED=<число> make test-unit (seed печатают Codeception и Vitest в начале прогона).
+# Повтор падения: TEST_RUN_ID=<id> SEED=<число> make check — id прогона и seed из отчёта, на свежем стенде.
+# Повтор на стенде: make test-rerun — тесты стенда дважды на одном стенде (ИЗ-1). Падение второго прохода
+#                 повторяет он же: TEST_RUN_ID=<id 1> TEST_RUN_ID_2=<id 2> SEED=<seed 1> make test-rerun.
+#                 Вручную: make stand-up, затем make test-no-pristine два раза подряд.
 # Шарды CI:       SHARD=<i>/<n> make test-regression-parallel и т. п. — только для яруса parallel.
+# Отчёт:          make report после make check: Allure и страница отчёта в site/. Смотреть через http:
+#                 python3 -m http.server -d site (Allure 3 грузит данные через fetch, из file:// не открывается).
 
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -14,11 +20,28 @@ SHELL := /bin/bash
 DEV := docker compose
 STAND := docker compose -p comments-test --env-file .env.test -f docker-compose.yml -f docker-compose.test.yml
 
+# Id прогона (ИЗ-1, ДТ-2): начало каждой метки тестовых данных. Один на весь прогон, вложенные make получают его
+# через окружение. Без него повторный прогон на том же стенде повторил бы метки прошлого.
+# Байты от 252 отбрасываются: 252 = 7 × 36, так символы равновероятны. 64 байт хватает с запасом.
+RANDOM_RUN_ID := od -An -N64 -tu1 /dev/urandom | awk '{ for (i = 1; i <= NF; i++) if ($$i < 252 && n < 4) { printf "%s", substr("abcdefghijklmnopqrstuvwxyz0123456789", $$i % 36 + 1, 1); n++ } }'
+ifndef TEST_RUN_ID
+TEST_RUN_ID := $(shell $(RANDOM_RUN_ID))
+endif
+export TEST_RUN_ID
+# Печатается один раз, в make верхнего уровня, и для заданного снаружи id тоже. Unit id не нужен,
+# а make test-rerun печатает оба id сам.
+ifeq ($(MAKELEVEL),0)
+ifneq ($(filter-out test-unit test-unit-php test-unit-js test-rerun,$(filter check test-%,$(MAKECMDGOALS))),)
+$(info [make] TEST_RUN_ID=$(TEST_RUN_ID). Повторить: TEST_RUN_ID=$(TEST_RUN_ID) SEED=<seed из отчёта>$(if $(SHARD), SHARD=$(SHARD)) make $(MAKECMDGOALS))
+endif
+endif
+
 # Без стенда: линтеры и сборка.
 PHP_RUN := $(STAND) run --rm --no-deps -T php
 NODE_RUN := $(STAND) run --rm --no-deps -T node
 # На поднятом стенде.
-PHP_STAND := $(STAND) exec -T php
+PHP_STAND := $(STAND) exec -T -e TEST_RUN_ID=$(TEST_RUN_ID) php
+PSQL_STAND := $(STAND) exec -T postgres sh -c
 # php-fpm пишет от www-data, а /app — bind mount с владельцем с хоста. На Linux (CI) каталоги из git
 # приходят с 755 и чужим владельцем, и AssetManager отвечает 500 «directory is not writable».
 # Docker Desktop на macOS права в bind mount не проверяет, поэтому локально это не видно.
@@ -26,7 +49,7 @@ PHP_STAND := $(STAND) exec -T php
 CHMOD_WEB_ASSETS := chmod 0777 frontend/web/assets backend/web/assets
 # Проект Playwright без тестов — это сломанный testDir, и прогон падает. Пустой шард CI не в счёт:
 # Playwright считает тесты до разбиения на шарды.
-PLAYWRIGHT := $(STAND) run --rm -T playwright npx playwright test
+PLAYWRIGHT := $(STAND) run --rm -T -e TEST_RUN_ID=$(TEST_RUN_ID) playwright npx playwright test
 
 CODECEPT_SEED := $(if $(SEED),--seed $(SEED),)
 CODECEPT_SHARD := $(if $(SHARD),--shard $(SHARD),)
@@ -36,7 +59,7 @@ PLAYWRIGHT_SHARD := $(if $(SHARD),--shard=$(SHARD),)
 	stand-up stand-down stand-logs test-unit test-unit-php test-unit-js test-smoke test-regression \
 	test-regression-pristine test-regression-parallel test-regression-exclusive \
 	test-regression-ws-parallel test-regression-ws-exclusive test-e2e test-e2e-parallel test-e2e-exclusive \
-	coverage check
+	test-no-pristine coverage check test-rerun run-id report report-collect
 
 help: ## Список целей
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-30s %s\n", $$1, $$2}'
@@ -62,8 +85,15 @@ install: .env ## Поставить зависимости PHP и JS
 migrate: ## Применить миграции на dev-стенде
 	$(DEV) exec -T php ./yii migrate --interactive=0
 
-admin: ## Создать админа для smoke на тестовом стенде (логин и пароль из .env.test). Пароль идёт через STDIN
-	$(PHP_STAND) sh -c 'printf "%s\n" "$$SMOKE_ADMIN_PASSWORD" | ./yii admin/create "$$SMOKE_ADMIN_LOGIN"'
+# Идемпотентна: если админ уже есть, ничего не делает и пароль не меняет (smoke работает и на стенде, где данные трогать нельзя).
+admin: ## Создать админа для smoke на тестовом стенде (логин и пароль из .env.test), если его ещё нет. Пароль идёт через STDIN
+	@exists=$$($(PSQL_STAND) 'echo "SELECT count(*) FROM \"user\" WHERE username = :'\''login'\''" \
+		| psql -tAq -v ON_ERROR_STOP=1 -v login="$$SMOKE_ADMIN_LOGIN" -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'); \
+	if [ "$$exists" = "1" ]; then \
+		echo "Админ для smoke уже есть: ничего не меняю (пароль и статус не проверялись)"; \
+	else \
+		$(PHP_STAND) sh -c 'printf "%s\n" "$$SMOKE_ADMIN_PASSWORD" | ./yii admin/create "$$SMOKE_ADMIN_LOGIN"'; \
+	fi
 
 # --- Линтеры -----------------------------------------------------------------
 
@@ -126,9 +156,9 @@ test-unit: test-unit-php test-unit-js ## Unit PHP и JS с порогом пок
 
 # Unit-тесты репозиториев ходят в тестовую Postgres, поэтому PHP-unit идёт на поднятом стенде.
 test-unit-php: stand-up
-	rm -rf tests/_output/coverage-php.xml tests/_output/junit-php.xml
+	rm -rf tests/_output/coverage-php.xml tests/_output/coverage-php-html tests/_output/junit-php.xml
 	$(PHP_STAND) php -d pcov.enabled=1 vendor/bin/codecept run '*::unit' $(CODECEPT_SEED) \
-		--xml junit-php.xml --coverage-xml coverage-php.xml --coverage-cobertura cobertura-php.xml
+		--xml junit-php.xml --coverage-xml coverage-php.xml --coverage-cobertura cobertura-php.xml --coverage-html coverage-php-html
 	$(NODE_RUN) node tools/checks/bin.js junit tests/_output/junit-php.xml
 	$(NODE_RUN) node tools/checks/bin.js coverage tests/_output/coverage-php.xml --strip=/app/
 
@@ -141,7 +171,13 @@ test-smoke: ## Smoke (Playwright)
 test-regression: test-regression-pristine test-regression-parallel test-regression-exclusive \
 	test-regression-ws-parallel test-regression-ws-exclusive ## REST-regression по ярусам, затем REG-WS
 
+# Ярусу нужна пустая БД, поэтому он сам пересоздаёт БД стенда: так он проходит и на стенде после прошлых прогонов.
+# Исключение из ИЗ-1 (docs/test-plans/rules.md): повторный проход make test-rerun его не включает.
+# Проверка имени БД — страховка: стереть можно только comments_test.
 test-regression-pristine:
+	$(PSQL_STAND) '[ "$$POSTGRES_DB" = comments_test ] || { echo "pristine пересоздаёт только БД comments_test, а не $$POSTGRES_DB" >&2; exit 1; }; \
+		psql -q -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"'
+	$(PHP_STAND) ./yii migrate --interactive=0
 	$(PHP_STAND) vendor/bin/codecept run '*::regression' -g pristine $(CODECEPT_SEED) --xml junit-regression-pristine.xml
 	$(NODE_RUN) node tools/checks/bin.js junit tests/_output/junit-regression-pristine.xml
 
@@ -161,6 +197,10 @@ test-regression-ws-exclusive:
 
 test-e2e: test-e2e-parallel test-e2e-exclusive ## E2E (Playwright): сначала parallel, затем exclusive
 
+# Повтор на том же стенде (ИЗ-1): всё, что повторяется без пересоздания БД. Второй проход make test-rerun и ручная проверка.
+NO_PRISTINE := test-regression-parallel test-regression-exclusive test-regression-ws-parallel test-regression-ws-exclusive test-e2e
+test-no-pristine: $(NO_PRISTINE) ## regression без pristine, REG-WS и e2e на поднятом стенде (можно повторять на том же стенде)
+
 test-e2e-parallel:
 	$(PLAYWRIGHT) --project=e2e-parallel $(PLAYWRIGHT_SHARD)
 
@@ -172,7 +212,74 @@ coverage: test-unit ## Покрытие: clover и cobertura PHP в tests/_outpu
 	@echo "JS:  tests/_output/coverage-js/lcov.info"
 
 check: ## lint → unit → админ для smoke → smoke → regression → e2e на свежем тестовом стенде, после прогона стенд сносится
+	rm -rf $(ALLURE_RESULTS)
 	$(MAKE) lint
 	$(MAKE) stand-down
 	trap '$(MAKE) stand-down' EXIT; \
 		$(MAKE) test-unit && $(MAKE) admin && $(MAKE) test-smoke && $(MAKE) test-regression && $(MAKE) test-e2e
+
+# ИЗ-1: повторный прогон на том же стенде. Первый проход: pristine → admin → smoke → остальное. pristine идёт раньше admin,
+# чтобы не стереть админа: тогда make admin второго прохода упирается в существующего и проверяет идемпотентность.
+# Второй проход — всё, кроме pristine, без stand-down, с другим TEST_RUN_ID (TEST_RUN_ID_2) и другим seed порядка.
+test-rerun: ## pristine → admin → smoke → regression → e2e, затем всё, кроме pristine, ещё раз на том же стенде; после прогона стенд сносится
+	rm -rf $(ALLURE_RESULTS)
+	$(MAKE) stand-down
+	trap '$(MAKE) stand-down' EXIT; \
+		first_seed=$(if $(SEED),$(SEED),$$(od -An -N4 -tu4 /dev/urandom | awk 'NF { print $$1 % 2147483647; exit }')); \
+		second_seed=$$(( first_seed % 2147483646 + 1 )); \
+		second_run_id='$(TEST_RUN_ID_2)'; \
+		if [ -z "$$second_run_id" ]; then \
+			until [ -n "$$second_run_id" ] && [ "$$second_run_id" != "$(TEST_RUN_ID)" ]; do second_run_id=$$($(RANDOM_RUN_ID)); done; \
+		fi; \
+		[ "$$second_run_id" != "$(TEST_RUN_ID)" ] || { echo "TEST_RUN_ID_2 должен отличаться от TEST_RUN_ID" >&2; exit 1; }; \
+		echo "[test-rerun] TEST_RUN_ID=$(TEST_RUN_ID) TEST_RUN_ID_2=$$second_run_id SEED=$$first_seed (второй проход: seed $$second_seed)"; \
+		echo "[test-rerun] Повторить: TEST_RUN_ID=$(TEST_RUN_ID) TEST_RUN_ID_2=$$second_run_id SEED=$$first_seed make test-rerun"; \
+		echo "[test-rerun] проход 1: TEST_RUN_ID=$(TEST_RUN_ID) SEED=$$first_seed"; \
+		$(MAKE) stand-up && $(MAKE) test-regression-pristine SEED=$$first_seed && $(MAKE) admin && $(MAKE) test-smoke && \
+		$(MAKE) test-no-pristine SEED=$$first_seed && \
+		echo "[test-rerun] проход 2 на том же стенде: TEST_RUN_ID=$$second_run_id SEED=$$second_seed" && \
+		$(MAKE) admin TEST_RUN_ID=$$second_run_id && $(MAKE) test-smoke TEST_RUN_ID=$$second_run_id && \
+		$(MAKE) test-no-pristine TEST_RUN_ID=$$second_run_id SEED=$$second_seed
+
+# --- Отчёт -------------------------------------------------------------------
+
+# Allure-результаты пишут все три раннера (codeception.yml, vitest.config.js, e2e/playwright.config.ts).
+ALLURE_RESULTS := tests/_output/allure-results
+ALLURE_PREPARED := tests/_output/allure-prepared
+# Ссылки страницы ведут на файлы по SHA прогона. CI передаёт свои значения, локально — из git.
+REPORT_REPO ?= $(shell git remote get-url origin 2>/dev/null)
+REPORT_SHA ?= $(shell git rev-parse HEAD 2>/dev/null)
+
+# Сводит то, что лежит в tests/_output после make check (в CI — артефакты всех jobs): результаты готовятся
+# (имя теста из плана, группы «набор → ID»), из них собирается отчёт Allure 3, рядом — страница и HTML покрытия.
+report: ## Отчёт после make check: Allure, покрытие и главная страница в site/
+	rm -rf site $(ALLURE_PREPARED)
+	mkdir -p site/coverage $(ALLURE_RESULTS)
+	$(NODE_RUN) node tools/report/bin.js --results=$(ALLURE_RESULTS) --prepared=$(ALLURE_PREPARED) \
+		--php-coverage=tests/_output/coverage-php.xml --js-coverage=tests/_output/coverage-js/coverage-summary.json \
+		--page=site/index.html --repo='$(REPORT_REPO)' --sha='$(REPORT_SHA)'
+	$(NODE_RUN) node_modules/.bin/allure generate $(ALLURE_PREPARED) --output site/allure
+	if [ -d tests/_output/coverage-php-html ]; then cp -R tests/_output/coverage-php-html site/coverage/php; fi
+	if [ -d tests/_output/coverage-js/lcov-report ]; then cp -R tests/_output/coverage-js/lcov-report site/coverage/js; fi
+	@echo "Отчёт: site/index.html. Смотреть: python3 -m http.server -d site, затем http://localhost:8000"
+
+# CI: артефакты jobs (каталог ARTIFACTS, в нём reports-<job>/) раскладываются в tests/_output, как после make check.
+# Allure-результаты каждого job — в свой подкаталог: для tools/report это отдельный прогон (наборы data provider
+# нумеруются внутри него, тест из нескольких jobs считается один раз). Покрытие есть только у unit; если unit
+# не успел его записать, файлов нет, и страница пишет «нет данных».
+ARTIFACTS ?= artifacts
+report-collect: ## CI: сложить артефакты jobs из ARTIFACTS в tests/_output перед make report
+	mkdir -p $(ALLURE_RESULTS)
+	for dir in $(ARTIFACTS)/reports-*/$(ALLURE_RESULTS); do \
+		if [ -d "$$dir" ]; then \
+			job=$${dir#$(ARTIFACTS)/reports-}; job=$${job%%/*}; \
+			mkdir -p $(ALLURE_RESULTS)/$$job && cp -R "$$dir/." $(ALLURE_RESULTS)/$$job/; \
+		fi; \
+	done
+	for report in $(ARTIFACTS)/reports-unit/tests/_output/coverage-*; do \
+		if [ -e "$$report" ]; then cp -R "$$report" tests/_output/; fi; \
+	done
+
+# CI генерирует id первым шагом job и кладёт его в $GITHUB_ENV: каждый шаг — отдельный make, а id нужен один на job.
+run-id: ## Напечатать TEST_RUN_ID (сгенерированный, если не задан)
+	@echo $(TEST_RUN_ID)

@@ -44,17 +44,17 @@ final class CommentFormTest extends Unit
         return [
             'имя из 1 символа → name.too_short' => ['name', 'Я', 'name.too_short'],
             'имя из 65 символов → name.too_long' => ['name', str_repeat('ж', 65), 'name.too_long'],
-            'перенос в имени → name.multiline' => ['name', "Ян\nМария", 'name.multiline'],
-            'NUL в имени → name.invalid_chars' => ['name', "Ян\0", 'name.invalid_chars'],
+            'имя из 1 символа после очистки → name.too_short' => ['name', "Я\0\u{202E}", 'name.too_short'],
             'текст из 2001 символа → text.too_long' => ['text', str_repeat('ж', 2001), 'text.too_long'],
-            'BEL в тексте → text.invalid_chars' => ['text', "текст\x07", 'text.invalid_chars'],
+            'текст из 2001 символа после очистки → text.too_long' => ['text', str_repeat('ж', 2001) . "\x07\u{2066}", 'text.too_long'],
         ];
     }
 
     #[TestDox('UNIT-CF-03: пустые после нормализации поля → name.required и text.required')]
-    public function testBlankFieldsAreRequired(): void
+    #[DataProvider('blankFields')]
+    public function testBlankFieldsAreRequired(string $name, string $text): void
     {
-        $form = $this->form(['name' => " \u{200B} ", 'text' => "\r\n \n"]);
+        $form = $this->form(['name' => $name, 'text' => $text]);
 
         $form->validate();
 
@@ -62,6 +62,17 @@ final class CommentFormTest extends Unit
             ['name' => [Yii::t('app', 'name.required')], 'text' => [Yii::t('app', 'text.required')]],
             $form->getErrors(),
         );
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function blankFields(): array
+    {
+        return [
+            'пробелы, нулевая ширина и переносы' => [" \u{200B} ", "\r\n \n"],
+            'только вырезаемые символы' => ["\0\t\u{202E}\xFF\n", "\x07\u{2066}\xC3\x7F"],
+        ];
     }
 
     #[TestDox('UNIT-CF-04: safe-атрибуты только name и text, остальные ключи load() игнорирует')]

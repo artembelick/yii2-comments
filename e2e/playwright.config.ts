@@ -28,6 +28,8 @@ export default defineConfig({
     ["list"],
     ["junit", { outputFile: "test-results/junit.xml" }],
     ["html", { open: "never", outputFolder: "playwright-report" }],
+    // Общий каталог Allure-результатов всех раннеров: make report сводит их в один отчёт.
+    ["allure-playwright", { resultsDir: "../tests/_output/allure-results" }],
   ],
   use: {
     baseURL: requireEnv("PUBLIC_URL"),
