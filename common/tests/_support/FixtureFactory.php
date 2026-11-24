@@ -6,11 +6,12 @@ namespace common\tests\_support;
 
 use common\models\User;
 use Faker\Generator;
+use InvalidArgumentException;
 use yii\db\Expression;
 
 /**
  * Генераторы строк для Yii-фикстур: уникальная метка и умолчания для всех колонок.
- * Пара для TS-фабрик e2e/support/factories.ts, имена те же: admin и comment.
+ * Пара для TS-фабрик e2e/support/factories.ts, имена те же: admin и comment, правило метки то же.
  */
 final readonly class FixtureFactory
 {
@@ -21,14 +22,34 @@ final readonly class FixtureFactory
 
     private const int AUTH_KEY_LENGTH = 32;
 
-    private const int TAG_LENGTH = 4;
+    /** Id прогона: одна строка на весь прогон, её генерирует Makefile (docs/test-plans/README.md, «Работа с данными»). */
+    private const string RUN_ID = '/^[a-z0-9]{4}$/';
 
-    public function __construct(private Generator $faker) {}
+    /** Часть метки из Faker: одинакова во всех прогонах теста (ДТ-2). */
+    private const int FAKER_TAG_LENGTH = 4;
 
-    /** Уникальная метка теста: по ней тест находит свои строки (ИЗ-3). */
+    /**
+     * @param string $runId TEST_RUN_ID: 4 символа [a-z0-9]
+     *
+     * @throws InvalidArgumentException TEST_RUN_ID не задан или не того вида
+     */
+    public function __construct(private Generator $faker, private string $runId)
+    {
+        if (preg_match(self::RUN_ID, $runId) !== 1) {
+            throw new InvalidArgumentException(sprintf(
+                'TEST_RUN_ID должен быть из 4 символов [a-z0-9], а получено «%s». Его задаёт Makefile; при запуске codecept напрямую передайте TEST_RUN_ID в окружение.',
+                $runId,
+            ));
+        }
+    }
+
+    /**
+     * Уникальная метка теста: по ней тест находит свои строки (ИЗ-3). Id прогона отделяет её от меток
+     * того же теста в прошлых прогонах на том же стенде (ИЗ-1).
+     */
     public function tag(): string
     {
-        return $this->faker->regexify(sprintf('[a-z0-9]{%d}', self::TAG_LENGTH));
+        return $this->runId . $this->faker->regexify(sprintf('[a-z0-9]{%d}', self::FAKER_TAG_LENGTH));
     }
 
     /**

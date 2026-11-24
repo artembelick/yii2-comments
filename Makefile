@@ -5,6 +5,8 @@
 #                 Интеграционные наборы идут на отдельном тестовом стенде (compose-проект comments-test),
 #                 который make check поднимает и после прогона сносит.
 # Повтор порядка: SEED=<число> make test-unit (seed печатают Codeception и Vitest в начале прогона).
+# Повтор падения: TEST_RUN_ID=<id> SEED=<число> make check — id прогона и seed из отчёта, на свежем стенде.
+# Повтор на стенде: make test-rerun — тесты стенда дважды на одном стенде (ИЗ-1).
 # Шарды CI:       SHARD=<i>/<n> make test-regression-parallel и т. п. — только для яруса parallel.
 
 SHELL := /bin/bash
@@ -14,11 +16,23 @@ SHELL := /bin/bash
 DEV := docker compose
 STAND := docker compose -p comments-test --env-file .env.test -f docker-compose.yml -f docker-compose.test.yml
 
+# Id прогона (ИЗ-1, ДТ-2): начало каждой метки тестовых данных. Один на весь прогон, вложенные make получают его
+# через окружение. Без него повторный прогон на том же стенде повторил бы метки прошлого.
+RANDOM_RUN_ID := od -An -N4 -tu1 /dev/urandom | awk '{ for (i = 1; i <= NF; i++) printf "%s", substr("abcdefghijklmnopqrstuvwxyz0123456789", $$i % 36 + 1, 1) }'
+ifndef TEST_RUN_ID
+TEST_RUN_ID := $(shell $(RANDOM_RUN_ID))
+ifneq ($(filter check test-%,$(MAKECMDGOALS)),)
+$(info [make] TEST_RUN_ID=$(TEST_RUN_ID). Повторить на свежем стенде: TEST_RUN_ID=$(TEST_RUN_ID) SEED=<seed из отчёта> make $(MAKECMDGOALS))
+endif
+endif
+export TEST_RUN_ID
+
 # Без стенда: линтеры и сборка.
 PHP_RUN := $(STAND) run --rm --no-deps -T php
 NODE_RUN := $(STAND) run --rm --no-deps -T node
 # На поднятом стенде.
-PHP_STAND := $(STAND) exec -T php
+PHP_STAND := $(STAND) exec -T -e TEST_RUN_ID=$(TEST_RUN_ID) php
+PSQL_STAND := $(STAND) exec -T postgres sh -c
 # php-fpm пишет от www-data, а /app — bind mount с владельцем с хоста. На Linux (CI) каталоги из git
 # приходят с 755 и чужим владельцем, и AssetManager отвечает 500 «directory is not writable».
 # Docker Desktop на macOS права в bind mount не проверяет, поэтому локально это не видно.
@@ -26,7 +40,7 @@ PHP_STAND := $(STAND) exec -T php
 CHMOD_WEB_ASSETS := chmod 0777 frontend/web/assets backend/web/assets
 # Проект Playwright без тестов — это сломанный testDir, и прогон падает. Пустой шард CI не в счёт:
 # Playwright считает тесты до разбиения на шарды.
-PLAYWRIGHT := $(STAND) run --rm -T playwright npx playwright test
+PLAYWRIGHT := $(STAND) run --rm -T -e TEST_RUN_ID=$(TEST_RUN_ID) playwright npx playwright test
 
 CODECEPT_SEED := $(if $(SEED),--seed $(SEED),)
 CODECEPT_SHARD := $(if $(SHARD),--shard $(SHARD),)
@@ -36,7 +50,7 @@ PLAYWRIGHT_SHARD := $(if $(SHARD),--shard=$(SHARD),)
 	stand-up stand-down stand-logs test-unit test-unit-php test-unit-js test-smoke test-regression \
 	test-regression-pristine test-regression-parallel test-regression-exclusive \
 	test-regression-ws-parallel test-regression-ws-exclusive test-e2e test-e2e-parallel test-e2e-exclusive \
-	coverage check
+	coverage check test-rerun
 
 help: ## Список целей
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-30s %s\n", $$1, $$2}'
@@ -62,8 +76,15 @@ install: .env ## Поставить зависимости PHP и JS
 migrate: ## Применить миграции на dev-стенде
 	$(DEV) exec -T php ./yii migrate --interactive=0
 
-admin: ## Создать админа для smoke на тестовом стенде (логин и пароль из .env.test). Пароль идёт через STDIN
-	$(PHP_STAND) sh -c 'printf "%s\n" "$$SMOKE_ADMIN_PASSWORD" | ./yii admin/create "$$SMOKE_ADMIN_LOGIN"'
+# Идемпотентна: если админ уже есть, ничего не делает и пароль не меняет (smoke работает и на стенде, где данные трогать нельзя).
+admin: ## Создать админа для smoke на тестовом стенде (логин и пароль из .env.test), если его ещё нет. Пароль идёт через STDIN
+	@exists=$$($(PSQL_STAND) 'echo "SELECT count(*) FROM \"user\" WHERE username = :'\''login'\''" \
+		| psql -tAq -v ON_ERROR_STOP=1 -v login="$$SMOKE_ADMIN_LOGIN" -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'); \
+	if [ "$$exists" = "1" ]; then \
+		echo "Админ для smoke уже есть: ничего не меняю"; \
+	else \
+		$(PHP_STAND) sh -c 'printf "%s\n" "$$SMOKE_ADMIN_PASSWORD" | ./yii admin/create "$$SMOKE_ADMIN_LOGIN"'; \
+	fi
 
 # --- Линтеры -----------------------------------------------------------------
 
@@ -141,7 +162,11 @@ test-smoke: ## Smoke (Playwright)
 test-regression: test-regression-pristine test-regression-parallel test-regression-exclusive \
 	test-regression-ws-parallel test-regression-ws-exclusive ## REST-regression по ярусам, затем REG-WS
 
+# Ярусу нужна пустая БД, поэтому он сам пересоздаёт БД стенда: так он проходит и на стенде после прошлых прогонов.
+# Исключение из ИЗ-1 (docs/test-plans/rules.md): повторный проход make test-rerun его не включает.
 test-regression-pristine:
+	$(PSQL_STAND) 'psql -q -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"'
+	$(PHP_STAND) ./yii migrate --interactive=0
 	$(PHP_STAND) vendor/bin/codecept run '*::regression' -g pristine $(CODECEPT_SEED) --xml junit-regression-pristine.xml
 	$(NODE_RUN) node tools/checks/bin.js junit tests/_output/junit-regression-pristine.xml
 
@@ -176,3 +201,20 @@ check: ## lint → unit → админ для smoke → smoke → regression →
 	$(MAKE) stand-down
 	trap '$(MAKE) stand-down' EXIT; \
 		$(MAKE) test-unit && $(MAKE) admin && $(MAKE) test-smoke && $(MAKE) test-regression && $(MAKE) test-e2e
+
+# ИЗ-1: повторный прогон на том же стенде. Первый проход — как в make check без lint и unit, второй — всё, кроме pristine,
+# без stand-down, с другим TEST_RUN_ID и другим seed порядка.
+test-rerun: ## smoke → regression → e2e дважды на одном стенде (второй раз без pristine), после прогона стенд сносится
+	$(MAKE) stand-down
+	trap '$(MAKE) stand-down' EXIT; \
+		first_seed=$(if $(SEED),$(SEED),$$(od -An -N4 -tu4 /dev/urandom | awk 'NF { print $$1 % 2147483647; exit }')); \
+		second_seed=$$(( first_seed % 2147483646 + 1 )); \
+		second_run_id=$(TEST_RUN_ID); \
+		while [ "$$second_run_id" = "$(TEST_RUN_ID)" ]; do second_run_id=$$($(RANDOM_RUN_ID)); done; \
+		echo "[test-rerun] проход 1: TEST_RUN_ID=$(TEST_RUN_ID) SEED=$$first_seed"; \
+		$(MAKE) stand-up && $(MAKE) admin && $(MAKE) test-smoke && $(MAKE) test-regression SEED=$$first_seed && $(MAKE) test-e2e && \
+		echo "[test-rerun] проход 2 на том же стенде: TEST_RUN_ID=$$second_run_id SEED=$$second_seed" && \
+		$(MAKE) admin TEST_RUN_ID=$$second_run_id && $(MAKE) test-smoke TEST_RUN_ID=$$second_run_id && \
+		$(MAKE) test-regression-parallel test-regression-exclusive test-regression-ws-parallel test-regression-ws-exclusive \
+			TEST_RUN_ID=$$second_run_id SEED=$$second_seed && \
+		$(MAKE) test-e2e TEST_RUN_ID=$$second_run_id

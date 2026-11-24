@@ -37,6 +37,15 @@ export default defineConfig({
           exclude: ["tools/**/__tests__/fixtures/**"],
         },
       },
+      {
+        extends: true,
+        test: {
+          // Хелперы /e2e, которые можно проверить без стенда: правило метки (UNIT-E2E-TAG).
+          name: "e2e-support",
+          environment: "node",
+          include: ["e2e/support/__tests__/**/*.test.ts"],
+        },
+      },
     ],
     coverage: {
       provider: "v8",

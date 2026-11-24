@@ -44,8 +44,11 @@ interface WorkerFixtures {
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   faker: async ({}, use, testInfo) => {
     const seed = seedFromTitle(testInfo.title);
-    // Seed виден в отчёте о падении.
-    testInfo.annotations.push({ type: "faker-seed", description: String(seed) });
+    // Seed и id прогона видны в отчёте о падении: по ним падение воспроизводится (ДТ-2).
+    testInfo.annotations.push(
+      { type: "faker-seed", description: String(seed) },
+      { type: "test-run-id", description: requireEnv("TEST_RUN_ID") },
+    );
     await use(seededFaker(seed));
   },
   guest: async ({ browser, redis }, use) => {

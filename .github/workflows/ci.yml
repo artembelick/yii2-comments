@@ -1,7 +1,7 @@
 # Запуски по таблице «Запуски» из docs/test-plans/README.md:
 # - push в любую ветку: lint и unit с покрытием;
 # - pull request и push в main: весь make check, разбитый на jobs (ярус parallel — шардами, pristine и exclusive — одним job);
-# - раз в сутки: весь make check дважды с разными seed случайного порядка.
+# - раз в сутки: весь make check дважды с разными seed случайного порядка и make test-rerun (повтор на том же стенде).
 name: CI
 
 on:
@@ -111,3 +111,17 @@ jobs:
         if: always()
         with:
           name: nightly-${{ matrix.run }}
+
+  # Ночной повтор на том же стенде (ИЗ-1): второй проход без пересоздания стенда, с другим TEST_RUN_ID и seed.
+  # Двойной make check выше ловит зависимость от порядка, этот job — зависимость от данных прошлого прогона.
+  nightly-rerun:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/install
+      - run: make test-rerun
+      - uses: ./.github/actions/reports
+        if: always()
+        with:
+          name: nightly-rerun
