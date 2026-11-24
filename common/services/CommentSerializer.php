@@ -45,7 +45,11 @@ final readonly class CommentSerializer
         ];
     }
 
-    private function isoUtc(string $timestamp): string
+    /**
+     * Дата в формате JSON и событий. Тот же формат стоит в `data-created-at` строк списка админки: клиент сравнивает
+     * его с `createdAt` события как строку, поэтому формат один на всех.
+     */
+    public function isoUtc(string $timestamp): string
     {
         return (new DateTimeImmutable($timestamp))->setTimezone(new DateTimeZone('UTC'))->format(self::ISO_UTC);
     }

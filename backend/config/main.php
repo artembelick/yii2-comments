@@ -48,6 +48,10 @@ return [
                 // Без ограничения метода в правиле: GET доходит до VerbFilter и получает 405, а не 404.
                 'api/ws-token' => 'ws-token/create',
                 'api/comments' => 'comment/list',
+                // id только числом: /comments/abc/edit — 404 (REG-A-44).
+                'comments/<id:\d+>/edit' => 'comment/update',
+                'comments/<id:\d+>/delete' => 'comment/delete',
+                'comments/<id:\d+>/restore' => 'comment/restore',
             ],
         ],
         'log' => [

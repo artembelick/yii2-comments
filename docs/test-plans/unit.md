@@ -448,11 +448,11 @@ public function changePassword(string $username, string $password): void
 |---|---|
 | UNIT-BC-01 | Провайдер `index`: `status=active` или без параметра → `page(Active, …)`; `status=deleted` → `page(Deleted, …)`; `status=foo` → 400 |
 | UNIT-BC-02 | `update` через GET: активный → форма с текущим текстом; удалённый → 409 с `admin.edit_deleted`; несуществующий → 404 |
-| UNIT-BC-03 | Провайдер `update` через POST: `Updated` → флэш `admin.updated` и редирект; `Unchanged` → флэш `admin.unchanged` и редирект; невалидно → 422 и форма; `CommentIsDeletedException` → 409; `CommentNotFoundException` → 404 |
-| UNIT-BC-04 | `delete`: true → флэш `admin.deleted`; false → `admin.already_deleted`; редирект в список с сохранением вкладки и страницы; несуществующий → 404 |
+| UNIT-BC-03 | Провайдер `update` через POST: `Updated` → флэш `admin.updated` (success) и редирект; `Unchanged` → флэш `admin.unchanged` (info) и редирект; невалидно, в том числе без поля `text`, → 422 и форма; `CommentIsDeletedException` → 409; `CommentNotFoundException` из сервиса (комментарий исчез после чтения контроллером) → 404 без текста исключения |
+| UNIT-BC-04 | `delete`: true → флэш `admin.deleted` (success); false → `admin.already_deleted` (info); редирект в список с сохранением вкладки и страницы (скрытые поля `status` и `page` формы строки; неверные или нет — первая страница «Активных»); несуществующий → 404 без текста исключения сервиса |
 | UNIT-BC-05 | `restore`: то же с `admin.restored` и `admin.already_active` |
 | UNIT-BC-06 | `list` → JSON `{items: [CommentSerializer], page, pageCount, totalCount}`; неверный `status` → 400 и JSON `{error: "invalid_status"}` |
-| UNIT-BC-07 | `behaviors()`: все действия только для вошедших; `delete`, `restore` и POST `update` проверяются VerbFilter |
+| UNIT-BC-07 | `behaviors()`: все действия только для вошедших; VerbFilter: `delete` и `restore` только POST, `update` только GET и POST |
 
 ### `backend\controllers\WsTokenController`
 
@@ -650,10 +650,10 @@ export function createRowRenderer({ template, timeZone, messages }) // → { ren
 
 | ID | Поведение |
 |---|---|
-| UNIT-JS-ROW-01 | Клонирует `<template>`, ставит `data-id` и заполняет автора, текст, дату и аудит через `textContent`; шаблон не меняется. В шаблоне нет `<tr>` или поля → `PageMarkupError` |
+| UNIT-JS-ROW-01 | Клонирует `<template>`, ставит `data-id` и `data-created-at` (ISO, по нему `comment-list` ставит строку на место) и заполняет автора, текст, дату и аудит через `textContent`; шаблон не меняется. В шаблоне нет `<tr>` или поля → `PageMarkupError` |
 | UNIT-JS-ROW-02 | HTML в имени и тексте остаётся текстом: в строке нет элементов, которых не было в шаблоне |
 | UNIT-JS-ROW-03 | `updatedBy` → «изменил: login»; `deletedBy` → «удалил: login»; null → элемент аудита пустой и скрыт. Логин с `$&` и `$'` подставляется как есть |
-| UNIT-JS-ROW-04 | Действия в строке соответствуют статусу: у активного ссылка `admin.action.edit` и форма с кнопкой `admin.action.delete`, у удалённого форма с кнопкой `admin.action.restore`. У кнопок есть `data-confirm` с текстом из каталога |
+| UNIT-JS-ROW-04 | Действия в строке соответствуют статусу: у активного ссылка `admin.action.edit` и форма с кнопкой `admin.action.delete`, у удалённого форма с кнопкой `admin.action.restore`. У кнопок есть `data-confirm` с текстом из каталога. В шаблоне блоки `data-actions` для обоих статусов и `{id}` в адресах: лишний блок убирается, `{id}` заменяется id |
 
 ### `comment-list.js`
 
@@ -667,8 +667,8 @@ export function createCommentList({ table, tbody, emptyState, view: { status, pa
 |---|---|
 | UNIT-JS-LIST-01 | `created` на «Активных», страница 1 → строка первой и подсвечена, подсветка снимается через 3 секунды. На полной странице последняя строка уходит. На пустой вкладке таблица показывается, текст пустого состояния скрывается |
 | UNIT-JS-LIST-02 | Провайдер видов: «Активные» стр. 2, «Удалённые» стр. 1 + `created` → строка не добавлена, баннер `formatNewBanner(1)`; следующий `created` → `(2)` |
-| UNIT-JS-LIST-03 | `updated` для видимой строки → строка перерисована на месте; для невидимой → ничего |
-| UNIT-JS-LIST-04 | `deleted` на «Активных» → строка удалена, страница не дозаполняется. На «Удалённых» → строка встаёт на место по `createdAt`, если попадает в диапазон страницы |
+| UNIT-JS-LIST-03 | `updated` для видимой строки → строка перерисована на месте; для невидимой → ничего. Если статус в событии не совпадает с вкладкой (событие правки опубликовано после удаления или восстановления), строка убирается, а не перерисовывается |
+| UNIT-JS-LIST-04 | `deleted` на «Активных» → строка удалена, страница не дозаполняется. На «Удалённых» → строка встаёт на место по `createdAt` (при равной дате выше больший id), если попадает в диапазон страницы: новее первой строки не на стр. 1 и старше последней на полной странице — не на этой странице |
 | UNIT-JS-LIST-05 | `restored`: зеркально к LIST-04 |
 | UNIT-JS-LIST-06 | Повторное событие с тем же состоянием (строка уже есть или её уже нет) ничего не дублирует |
 | UNIT-JS-LIST-07 | `replaceAll` перерисовывает tbody целиком, скрывает баннер и обнуляет его счётчик. Пустой список → таблица скрыта, текст пустого состояния показан |

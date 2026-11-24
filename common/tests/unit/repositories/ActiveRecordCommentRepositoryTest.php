@@ -53,6 +53,83 @@ final class ActiveRecordCommentRepositoryTest extends Unit
         self::assertNull($found);
     }
 
+    #[TestDox('UNIT-REPO-03: updateText активного меняет текст, updated_at и updated_by и возвращает true')]
+    public function testUpdateTextChangesActiveComment(): void
+    {
+        $admin = $this->tester->haveAdmin();
+        $comment = $this->tester->haveComment(['author' => 'Ян', 'text' => 'Старый текст']);
+        $repository = new ActiveRecordCommentRepository();
+
+        $updated = $repository->updateText($comment->id, 'Новый текст', $admin->id, new DateTimeImmutable('2026-11-24 12:00:00.5+00:00'));
+
+        self::assertTrue($updated);
+        self::assertSame(
+            ['author' => 'Ян', 'text' => 'Новый текст', 'updated_at' => '2026-11-24 12:00:00.5+00', 'updated_by' => $admin->id],
+            $this->stored($comment->id, ['author', 'text', 'updated_at', 'updated_by']),
+        );
+    }
+
+    #[TestDox('UNIT-REPO-03: updateText удалённого ничего не меняет и возвращает false')]
+    public function testUpdateTextLeavesDeletedComment(): void
+    {
+        $admin = $this->tester->haveAdmin();
+        $comment = $this->tester->haveComment(['text' => 'Старый текст', 'deleted_at' => '2026-11-24 11:00:00+00', 'deleted_by' => $admin->id]);
+        $repository = new ActiveRecordCommentRepository();
+
+        $updated = $repository->updateText($comment->id, 'Новый текст', $admin->id, new DateTimeImmutable('2026-11-24 12:00:00+00:00'));
+
+        self::assertFalse($updated);
+        self::assertSame(
+            ['text' => 'Старый текст', 'updated_at' => null, 'updated_by' => null],
+            $this->stored($comment->id, ['text', 'updated_at', 'updated_by']),
+        );
+    }
+
+    #[TestDox('UNIT-REPO-04: markDeleted — первый вызов true, второй другим админом false, deleted_by остаётся за первым')]
+    public function testMarkDeletedIsConditional(): void
+    {
+        $first = $this->tester->haveAdmin();
+        $second = $this->tester->haveAdmin();
+        $comment = $this->tester->haveComment();
+        $repository = new ActiveRecordCommentRepository();
+
+        $results = [
+            $repository->markDeleted($comment->id, $first->id, new DateTimeImmutable('2026-11-24 12:00:00+00:00')),
+            $repository->markDeleted($comment->id, $second->id, new DateTimeImmutable('2026-11-24 12:05:00+00:00')),
+        ];
+
+        self::assertSame([true, false], $results);
+        self::assertSame(
+            ['deleted_at' => '2026-11-24 12:00:00+00', 'deleted_by' => $first->id],
+            $this->stored($comment->id, ['deleted_at', 'deleted_by']),
+        );
+    }
+
+    #[TestDox('UNIT-REPO-05: markRestored очищает deleted_at и deleted_by и возвращает true')]
+    public function testMarkRestoredClearsDeletion(): void
+    {
+        $admin = $this->tester->haveAdmin();
+        $comment = $this->tester->haveComment(['deleted_at' => '2026-11-24 11:00:00+00', 'deleted_by' => $admin->id]);
+        $repository = new ActiveRecordCommentRepository();
+
+        $restored = $repository->markRestored($comment->id);
+
+        self::assertTrue($restored);
+        self::assertSame(['deleted_at' => null, 'deleted_by' => null], $this->stored($comment->id, ['deleted_at', 'deleted_by']));
+    }
+
+    #[TestDox('UNIT-REPO-05: markRestored активного возвращает false')]
+    public function testMarkRestoredOfActiveReturnsFalse(): void
+    {
+        $comment = $this->tester->haveComment();
+        $repository = new ActiveRecordCommentRepository();
+
+        $restored = $repository->markRestored($comment->id);
+
+        self::assertFalse($restored);
+        self::assertSame(['deleted_at' => null, 'deleted_by' => null], $this->stored($comment->id, ['deleted_at', 'deleted_by']));
+    }
+
     #[TestDox('UNIT-REPO-06: page фильтрует по статусу, сортирует новые сверху и отдаёт perPage записей')]
     public function testPageFiltersSortsAndLimits(): void
     {
@@ -108,6 +185,21 @@ final class ActiveRecordCommentRepositoryTest extends Unit
             'страница -1 → первая' => [3, -1, 1, 2],
             'пустая выборка → страница 1 из 1' => [0, 5, 1, 1],
         ];
+    }
+
+    /**
+     * Колонки комментария, как они лежат в БД после действия.
+     *
+     * @param list<string> $columns
+     *
+     * @return array<string, mixed>
+     */
+    private function stored(int $id, array $columns): array
+    {
+        $stored = Comment::findOne($id);
+        self::assertInstanceOf(Comment::class, $stored);
+
+        return $stored->getAttributes($columns);
     }
 
     /**

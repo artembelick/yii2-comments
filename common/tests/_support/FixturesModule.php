@@ -16,7 +16,7 @@ use Yii;
 
 /**
  * Данные-предусловия для тестов на БД: строки из FixtureFactory вставляются Yii-фикстурами
- * через модуль Yii2. Faker получает seed из ID теста, seed попадает в отчёт о падении (ДТ-2).
+ * через модуль Yii2. Faker получает seed из ID и имени теста (TestSeed), seed попадает в отчёт о падении (ДТ-2).
  */
 final class FixturesModule extends Module
 {

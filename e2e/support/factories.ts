@@ -57,11 +57,18 @@ export function adminRow(faker: Faker, overrides: { status?: number } = {}): Row
   };
 }
 
+/** Что можно задать комментарию-предусловию: дату создания и админа, который его удалил. */
+export interface CommentOverrides {
+  createdAt?: string;
+  /** Удалён этим админом сейчас; без него комментарий активен. */
+  deletedBy?: number;
+}
+
 /**
  * Поля строки таблицы comment, кроме id из последовательности. Дата по умолчанию — текущее время БД:
  * комментарий-предусловие встаёт в начало ленты и списка (ярус exclusive).
  */
-export function commentRow(faker: Faker, overrides: { createdAt?: string } = {}): Row {
+export function commentRow(faker: Faker, overrides: CommentOverrides = {}): Row {
   const tag = uniqueTag(faker);
 
   return {
@@ -70,8 +77,8 @@ export function commentRow(faker: Faker, overrides: { createdAt?: string } = {})
     created_at: overrides.createdAt ?? "now",
     updated_at: null,
     updated_by: null,
-    deleted_at: null,
-    deleted_by: null,
+    deleted_at: overrides.deletedBy === undefined ? null : "now",
+    deleted_by: overrides.deletedBy ?? null,
   };
 }
 
@@ -110,7 +117,7 @@ export async function admin(db: Pool, faker: Faker, overrides: { status?: number
 }
 
 /** Комментарий-предусловие: вставляется в БД, а не через форму гостя. */
-export async function comment(db: Pool, faker: Faker, overrides: { createdAt?: string } = {}): Promise<Comment> {
+export async function comment(db: Pool, faker: Faker, overrides: CommentOverrides = {}): Promise<Comment> {
   const row = await insert(db, "comment", commentRow(faker, overrides));
 
   return { id: Number(row["id"]), author: String(row["author"]), text: String(row["text"]) };

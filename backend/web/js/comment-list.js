@@ -25,6 +25,23 @@ const HIGHLIGHT_MS = 3000;
  * @property {{ setTimeout: (handler: () => void, ms: number) => unknown }} timers
  */
 
+/**
+ * Комментарий стоит выше строки: порядок списка — новые сверху, при равной дате больший id выше.
+ * Даты в ISO 8601 UTC одного формата, поэтому сравниваются как строки.
+ *
+ * @param {SerializedComment} comment
+ * @param {HTMLTableRowElement} row
+ * @returns {boolean}
+ */
+const isNewer = (comment, row) => {
+  const rowCreatedAt = String(row.dataset["createdAt"]);
+  if (comment.createdAt !== rowCreatedAt) {
+    return comment.createdAt > rowCreatedAt;
+  }
+
+  return comment.id > Number(row.dataset["id"]);
+};
+
 /** Состояние списка на странице: показанные строки и новые комментарии, которых на ней не видно. */
 class CommentList {
   /**
@@ -47,13 +64,19 @@ class CommentList {
 
   /** @param {CommentEvent} event */
   apply(event) {
-    if (event.type !== "comment.created" || this.#isShown(event.comment.id)) {
-      return;
-    }
-    if (this.#showsNewest()) {
-      this.#insertNewest(event.comment);
+    if (event.type === "comment.created") {
+      this.#applyCreated(event.comment);
+    } else if (event.comment.status !== this.#deps.view.status) {
+      /*
+       * Комментарию не место на этой вкладке. Для updated это снимок, опубликованный после удаления
+       * или восстановления: перерисовать строку по нему значило бы показать кнопки чужого статуса.
+       */
+      this.#rowOf(event.comment.id)?.remove();
+      this.#syncEmptyState();
+    } else if (event.type === "comment.updated") {
+      this.#rowOf(event.comment.id)?.replaceWith(this.#deps.renderRow(event.comment));
     } else {
-      this.#countUnseen(event.comment);
+      this.#place(event.comment);
     }
   }
 
@@ -70,12 +93,58 @@ class CommentList {
     return this.#deps.view.status === "active" && this.#deps.view.page === 1;
   }
 
+  /** @param {SerializedComment} comment */
+  #applyCreated(comment) {
+    if (this.#rowOf(comment.id) !== undefined) {
+      return;
+    }
+    if (this.#showsNewest()) {
+      this.#insertNewest(comment);
+    } else {
+      this.#countUnseen(comment);
+    }
+  }
+
   /**
    * @param {number} id
-   * @returns {boolean}
+   * @returns {HTMLTableRowElement | undefined}
    */
-  #isShown(id) {
-    return [...this.#deps.tbody.rows].some((row) => row.dataset["id"] === String(id));
+  #rowOf(id) {
+    return [...this.#deps.tbody.rows].find((row) => row.dataset["id"] === String(id));
+  }
+
+  /**
+   * Удалённый или восстановленный комментарий встаёт на своё место по дате создания, если оно на этой странице:
+   * новее первой строки — место на предыдущей странице (кроме первой), старше последней на полной — на следующей.
+   *
+   * @param {SerializedComment} comment
+   */
+  #place(comment) {
+    if (this.#rowOf(comment.id) !== undefined) {
+      return;
+    }
+    const rows = [...this.#deps.tbody.rows];
+    const next = rows.find((row) => isNewer(comment, row));
+    const onEarlierPage = next === rows[0] && this.#deps.view.page > 1;
+    const onLaterPage = next === undefined && rows.length >= this.#deps.view.perPage;
+    if (onEarlierPage || onLaterPage) {
+      return;
+    }
+    const row = this.#deps.renderRow(comment);
+    if (next === undefined) {
+      this.#deps.tbody.append(row);
+    } else {
+      next.before(row);
+    }
+    this.#trimToPage();
+    this.#syncEmptyState();
+  }
+
+  /** На полной странице лишние строки снизу уходят на следующую. */
+  #trimToPage() {
+    for (const extra of [...this.#deps.tbody.rows].slice(this.#deps.view.perPage)) {
+      extra.remove();
+    }
   }
 
   #syncEmptyState() {
@@ -88,9 +157,7 @@ class CommentList {
     const row = this.#deps.renderRow(comment);
     row.dataset["highlighted"] = "true";
     this.#deps.tbody.prepend(row);
-    for (const extra of [...this.#deps.tbody.rows].slice(this.#deps.view.perPage)) {
-      extra.remove();
-    }
+    this.#trimToPage();
     this.#syncEmptyState();
     this.#deps.timers.setTimeout(() => {
       delete row.dataset["highlighted"];
@@ -107,7 +174,9 @@ class CommentList {
 
 /**
  * Список админки, который обновляется событиями WS. Новый комментарий встаёт первой строкой только на первой
- * странице «Активных»: на других видах строки не сдвигаются, а баннер считает новые комментарии.
+ * странице «Активных»: на других видах строки не сдвигаются, а баннер считает новые комментарии. Правка
+ * перерисовывает строку на месте. Удалённый уходит с «Активных» и встаёт на своё место на «Удалённых»,
+ * восстановленный — наоборот; освободившееся место страница не дозаполняет.
  *
  * @param {CommentListDependencies} dependencies
  * @returns {{ apply(event: CommentEvent): void, replaceAll(items: SerializedComment[]): void }}

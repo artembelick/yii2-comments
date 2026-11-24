@@ -1,6 +1,8 @@
-import type { APIRequestContext } from "@playwright/test";
+import { expect } from "@playwright/test";
+import type { APIRequestContext, Page } from "@playwright/test";
 
 import { requireEnv } from "./env.ts";
+import { message } from "./messages.ts";
 
 export interface Credentials {
   username: string;
@@ -41,6 +43,25 @@ export async function logIn(request: APIRequestContext, credentials: Credentials
   }
 }
 
+/**
+ * POST формы строки админки (правка, удаление, восстановление) без браузера: CSRF-токен со страницы списка.
+ * Для REG-WS, где предмет проверки — событие, а не форма.
+ */
+export async function submitAdminForm(
+  request: APIRequestContext,
+  path: string,
+  fields: Record<string, string> = {},
+): Promise<void> {
+  const csrf = await csrfTokenAt(request, "/");
+  const response = await request.post(`${requireEnv("ADMIN_URL")}${path}`, {
+    form: { "_csrf-backend": csrf, ...fields },
+    maxRedirects: 0,
+  });
+  if (response.status() !== HTTP_FOUND) {
+    throw new Error(`Действие ${path} не выполнено: ответ ${response.status()}`);
+  }
+}
+
 /** Одноразовый токен WS для вошедшего админа: POST /api/ws-token с CSRF-заголовком, как у клиента админки. */
 export async function issueWsToken(request: APIRequestContext): Promise<string> {
   const csrf = await csrfTokenAt(request, "/");
@@ -53,4 +74,14 @@ export async function issueWsToken(request: APIRequestContext): Promise<string> 
   }
 
   return String(body.token);
+}
+
+/**
+ * Админ входит без UI, открывает страницу админки и ждёт «онлайн»: события WS, которые вызовет тест,
+ * придут на уже авторизованное соединение.
+ */
+export async function openAdminPage(page: Page, credentials: Credentials, path = "/"): Promise<void> {
+  await logIn(page.request, credentials);
+  await page.goto(`${requireEnv("ADMIN_URL")}${path}`);
+  await expect(page.getByRole("status", { name: message("ws.status.label") })).toHaveText(message("ws.status.online"));
 }

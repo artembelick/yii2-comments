@@ -35,6 +35,27 @@ final class CommentListCest
         $I->assertSame([], array_values(array_intersect($newestActiveFirst, $pages['deleted1'])));
     }
 
+    /** REG-A-31: в строке изменённого А комментария «изменил: А», удалённого Б — «удалил: Б» */
+    #[Group('exclusive')]
+    public function rowsShowWhoChangedAndDeleted(RegressionTester $I): void
+    {
+        $adminA = $I->haveAdmin();
+        $adminB = $I->haveAdmin();
+        $updated = $I->haveComment(['updated_at' => new Expression('now()'), 'updated_by' => $adminA->id]);
+        $deleted = $I->haveComment(['deleted_at' => new Expression('now()'), 'deleted_by' => $adminB->id]);
+        $I->amSignedInAs($adminA);
+
+        $audits = [
+            'active' => $I->grabAuditOf('/', $updated->text),
+            'deleted' => $I->grabAuditOf('/?status=deleted', $deleted->text),
+        ];
+
+        $I->assertSame([
+            'active' => Yii::t('app', 'admin.audit.updated', ['login' => $adminA->username]),
+            'deleted' => Yii::t('app', 'admin.audit.deleted', ['login' => $adminB->username]),
+        ], $audits);
+    }
+
     /**
      * REG-A-32: вкладка без комментариев → её пустое состояние
      *

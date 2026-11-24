@@ -5,6 +5,7 @@ declare(strict_types=1);
 use backend\controllers\CommentController;
 use common\repositories\CommentPage;
 use common\repositories\CommentStatus;
+use common\services\CommentSerializer;
 use yii\bootstrap5\Html;
 use yii\bootstrap5\LinkPager;
 use yii\data\Pagination;
@@ -12,7 +13,10 @@ use yii\helpers\Url;
 
 /** @var yii\web\View $this */
 /** @var CommentStatus $status */
-/** @var CommentPage $page */
+/**
+ * @var CommentPage $page
+ * @var CommentSerializer $serializer дата создания строки — в формате JSON и событий: по ней comment-list.js ставит её на место
+ */
 
 $this->title = Yii::t('app', 'admin.title');
 $tabs = [
@@ -76,6 +80,7 @@ $pagination = new Pagination([
             <th scope="col"><?= Html::encode(Yii::t('app', 'admin.col.text')) ?></th>
             <th scope="col"><?= Html::encode(Yii::t('app', 'admin.col.created')) ?></th>
             <th scope="col"><?= Html::encode(Yii::t('app', 'admin.col.audit')) ?></th>
+            <th scope="col"><?= Html::encode(Yii::t('app', 'admin.col.actions')) ?></th>
         </tr>
     </thead>
     <tbody>
@@ -86,17 +91,23 @@ $pagination = new Pagination([
                 $comment->deletedByUser === null ? '' : Yii::t('app', 'admin.audit.deleted', ['login' => $comment->deletedByUser->username]),
             ], static fn(string $line): bool => $line !== '');
             ?>
-            <tr data-id="<?= $comment->id ?>">
+            <tr data-id="<?= $comment->id ?>" data-created-at="<?= Html::encode($serializer->isoUtc($comment->created_at)) ?>">
                 <td data-field="author"><?= Html::encode($comment->author) ?></td>
                 <td class="comment-text" data-field="text"><?= Html::encode($comment->text) ?></td>
                 <td data-field="createdAt"><?= Yii::$app->formatter->asDatetime($comment->created_at) ?></td>
                 <td><span class="comment-audit" data-field="audit"<?= $audit === [] ? ' hidden' : '' ?>><?= Html::encode(implode("\n", $audit)) ?></span></td>
+                <td><?= $this->render('_actions', [
+                    'id' => (string) $comment->id,
+                    'statuses' => [$comment->isDeleted() ? CommentStatus::Deleted : CommentStatus::Active],
+                    'tab' => $status,
+                    'page' => $page->page,
+                ]) ?></td>
             </tr>
         <?php endforeach ?>
     </tbody>
 </table>
 
-<?php // Шаблон строки для row-renderer.js: та же разметка, что у строк выше. Тексты аудита — с плейсхолдером {login}.?>
+<?php // Шаблон строки для row-renderer.js: та же разметка, что у строк выше. Тексты аудита — с плейсхолдером {login}, адреса действий — с {id}.?>
 <template data-row-template
           data-text-updated="<?= Html::encode(Yii::t('app', 'admin.audit.updated')) ?>"
           data-text-deleted="<?= Html::encode(Yii::t('app', 'admin.audit.deleted')) ?>">
@@ -105,6 +116,12 @@ $pagination = new Pagination([
         <td class="comment-text" data-field="text"></td>
         <td data-field="createdAt"></td>
         <td><span class="comment-audit" data-field="audit" hidden></span></td>
+        <td><?= $this->render('_actions', [
+            'id' => '{id}',
+            'statuses' => [CommentStatus::Active, CommentStatus::Deleted],
+            'tab' => $status,
+            'page' => $page->page,
+        ]) ?></td>
     </tr>
 </template>
 

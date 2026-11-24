@@ -27,6 +27,30 @@ const field = (row, name) => {
 };
 
 /**
+ * Действия строки по статусу комментария: в шаблоне блоки `data-actions` для обоих статусов, лишний убирается.
+ * В адресах ссылок и форм шаблона вместо id стоит `{id}`.
+ *
+ * @param {HTMLTableRowElement} row
+ * @param {SerializedComment} comment
+ */
+const showActionsFor = (row, comment) => {
+  /** @type {NodeListOf<HTMLElement>} */
+  const blocks = row.querySelectorAll("[data-actions]");
+  for (const block of blocks) {
+    if (block.dataset["actions"] !== comment.status) {
+      block.remove();
+    }
+  }
+  const id = String(comment.id);
+  for (const link of row.querySelectorAll("a[href]")) {
+    link.setAttribute("href", String(link.getAttribute("href")).replace("{id}", id));
+  }
+  for (const form of row.querySelectorAll("form[action]")) {
+    form.setAttribute("action", String(form.getAttribute("action")).replace("{id}", id));
+  }
+};
+
+/**
  * Строки списка админки из `<template>`, который сервер кладёт рядом с таблицей: строка из JS устроена
  * так же, как строка из PHP. Всё пишется через textContent: разметка в комментарии остаётся текстом (ADR 0002).
  *
@@ -47,6 +71,8 @@ export function createRowRenderer({ template, timeZone, messages }) {
         deletedBy === null ? "" : messages.deleted.replace("{login}", () => deletedBy),
       ].filter((line) => line !== "");
       row.dataset["id"] = String(comment.id);
+      row.dataset["createdAt"] = comment.createdAt;
+      showActionsFor(row, comment);
       field(row, "author").textContent = comment.author;
       field(row, "text").textContent = comment.text;
       field(row, "createdAt").textContent = formatDate(comment.createdAt, timeZone);

@@ -242,17 +242,19 @@ final class LoginCest
         $I->seeHttpHeader('Location', self::LOGIN_URL);
     }
 
-    /** REG-A-13: без входа открыть вкладку «Удалённые», войти → открыта эта вкладка */
+    /** REG-A-13: без входа открыть страницу правки, войти → открыта она же */
     public function loginReturnsToRequestedPage(RegressionTester $I): void
     {
         $admin = $I->haveAdmin();
-        $I->amOnPage('/?status=deleted');
+        $comment = $I->haveComment();
+        $editUrl = sprintf('/comments/%d/edit', $comment->id);
+        $I->amOnPage($editUrl);
         $I->stopFollowingRedirects();
 
         $I->submitForm('#login-form', ['LoginForm[username]' => $admin->username, 'LoginForm[password]' => FixtureFactory::ADMIN_PASSWORD]);
 
         $I->seeResponseCodeIs(302);
-        $I->seeHttpHeader('Location', self::LIST_URL . '?status=deleted');
+        $I->seeHttpHeader('Location', 'http://admin.comments.localhost' . $editUrl);
     }
 
     /**

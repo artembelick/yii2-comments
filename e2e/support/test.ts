@@ -7,6 +7,7 @@ import type { Pool } from "pg";
 import { logIn } from "./admin.ts";
 import { requireEnv } from "./env.ts";
 import { admin, connectDb } from "./factories.ts";
+import type { Admin } from "./factories.ts";
 import { seededFaker, seedFromTitle } from "./faker.ts";
 import { connectRedis, resetRateLimits } from "./redis.ts";
 import { openAuthenticatedWs, openWs } from "./ws.ts";
@@ -16,9 +17,13 @@ interface TestFixtures {
   faker: Faker;
   /** Гость в своём browser context (БР-2) на публичной части. Счётчики лимита перед тестом сброшены. */
   guest: Page;
+  /** Второй админ (Б) в своём browser context (БР-2): пустая страница, вход через `logIn(otherAdmin.request, …)`. */
+  otherAdmin: Page;
   /** HTTP-клиент гостя без браузера для REG-WS: отправляет форму через postComment. Счётчики лимита сброшены. */
   guestApi: APIRequestContext;
-  /** HTTP-клиент без браузера, вошедший свежим админом из фабрики: для токена WS в REG-WS. */
+  /** Свежий админ из фабрики, которым вошёл `adminApi`. */
+  adminAccount: Admin;
+  /** HTTP-клиент без браузера, вошедший админом `adminAccount`: для токена WS и действий админа в REG-WS. */
   adminApi: APIRequestContext;
   /** Соединения REG-WS. Всё, что тест открыл, закрывается после теста, а не в его теле. */
   ws: { open: () => Promise<WsProbe>; openAuthenticated: (token: string) => Promise<WsProbe> };
@@ -29,7 +34,7 @@ interface WorkerFixtures {
   redis: Redis;
 }
 
-/** Общий `test` для всех наборов: Faker с seed из ID теста, соединения со стендом на воркер. */
+/** Общий `test` для всех наборов: Faker с seed из полного имени теста (ДТ-2), соединения со стендом на воркер. */
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   faker: async ({}, use, testInfo) => {
     const seed = seedFromTitle(testInfo.title);
@@ -43,15 +48,23 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     await use(await context.newPage());
     await context.close();
   },
+  otherAdmin: async ({ browser }, use) => {
+    const context = await browser.newContext({ baseURL: requireEnv("ADMIN_URL") });
+    await use(await context.newPage());
+    await context.close();
+  },
   guestApi: async ({ playwright, redis }, use) => {
     await resetRateLimits(redis);
     const request = await playwright.request.newContext();
     await use(request);
     await request.dispose();
   },
-  adminApi: async ({ playwright, db, faker }, use) => {
+  adminAccount: async ({ db, faker }, use) => {
+    await use(await admin(db, faker));
+  },
+  adminApi: async ({ playwright, adminAccount }, use) => {
     const request = await playwright.request.newContext();
-    await logIn(request, await admin(db, faker));
+    await logIn(request, adminAccount);
     await use(request);
     await request.dispose();
   },

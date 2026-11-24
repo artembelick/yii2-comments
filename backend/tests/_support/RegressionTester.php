@@ -6,8 +6,14 @@ namespace backend\tests;
 
 use backend\tests\_generated\RegressionTesterActions;
 use Codeception\Actor;
+use common\models\Comment;
 use common\models\User;
+use common\repositories\CommentStatus;
 use common\tests\_support\FixtureFactory;
+use RuntimeException;
+use Yii;
+use yii\db\Expression;
+use yii\helpers\Html;
 
 /**
  * Актор REST-regression админки. Действия модулей генерирует Codeception в _generated,
@@ -16,6 +22,79 @@ use common\tests\_support\FixtureFactory;
 final class RegressionTester extends Actor
 {
     use RegressionTesterActions;
+
+    /** Имя CSRF-поля админки. */
+    public const string CSRF_PARAM = '_csrf-backend';
+
+    /**
+     * POST формы админки как есть: CSRF-токен со страницы списка, поля без обёртки. Ответ не разворачивается:
+     * 302 виден как 302, куда он ведёт — в заголовке Location. Без токена: `$withCsrf = false`.
+     *
+     * @param array<mixed> $fields
+     */
+    public function submitAdminForm(string $url, array $fields, bool $withCsrf = true): void
+    {
+        $this->amOnPage('/');
+        $csrf = $withCsrf ? [self::CSRF_PARAM => $this->grabCsrfToken()] : [];
+        $this->stopFollowingRedirects();
+        // Тело собирается само: REST кодирует массив параметров в JSON для лога и падает на невалидном UTF-8.
+        $this->haveHttpHeader('Content-Type', 'application/x-www-form-urlencoded');
+        $this->sendPost($url, http_build_query([...$csrf, ...$fields]));
+        $this->startFollowingRedirects();
+    }
+
+    /**
+     * Ответ — редирект на $url (путь админки). Тест переходит по нему и видит на открытой странице флэш с текстом
+     * $messageKey: флэш показывается только после редиректа.
+     */
+    public function followRedirectAndSeeFlash(string $url, string $messageKey): void
+    {
+        $this->seeResponseCodeIs(302);
+        $this->seeHttpHeader('Location', 'http://admin.comments.localhost' . $url);
+        $this->amOnPage($url);
+        $this->see(Yii::t('app', $messageKey), '.alert');
+    }
+
+    /** Текст ошибки поля в последнем ответе. */
+    public function seeFieldError(string $messageKey): void
+    {
+        $this->seeResponseContains('<div class="invalid-feedback">' . Html::encode(Yii::t('app', $messageKey)) . '</div>');
+    }
+
+    /** Активный комментарий или удалённый админом $admin. */
+    public function haveCommentWithStatus(CommentStatus $status, User $admin): Comment
+    {
+        return $this->haveComment(match ($status) {
+            CommentStatus::Active => [],
+            CommentStatus::Deleted => ['deleted_at' => new Expression('now()'), 'deleted_by' => $admin->id],
+        });
+    }
+
+    /**
+     * Тексты первой страницы JSON-списка вкладки. Комментарий-предусловие с текущей датой стоит на ней, только
+     * пока другие тесты не создают комментарии параллельно: такие проверки живут в ярусе exclusive.
+     *
+     * @return list<string>
+     */
+    public function grabJsonTexts(string $status): array
+    {
+        /** @var list<string> */
+        return array_column($this->grabJsonList($status, 1)['items'], 'text');
+    }
+
+    /**
+     * Колонки комментария, как они лежат в БД сейчас.
+     *
+     * @param list<string> $columns
+     *
+     * @return array<string, mixed>
+     */
+    public function grabCommentColumns(int $id, array $columns): array
+    {
+        $comment = Comment::findOne($id) ?? throw new RuntimeException(sprintf('Комментария %d нет в БД', $id));
+
+        return $comment->getAttributes($columns);
+    }
 
     /** Отправляет форму входа со страницы логина: CSRF-токен берётся из формы. */
     public function submitLogin(string $username, string $password): void
@@ -73,6 +152,16 @@ final class RegressionTester extends Actor
 
         /** @var list<string> */
         return array_values($this->grabMultiple('tbody tr .comment-text'));
+    }
+
+    /** Текст аудита («изменил: …», «удалил: …») в строке списка с текстом $text на странице $url. */
+    public function grabAuditOf(string $url, string $text): string
+    {
+        $this->amOnPage($url);
+        $this->seeResponseCodeIs(200);
+        $audits = array_combine($this->grabMultiple('tbody tr [data-field="text"]'), $this->grabMultiple('tbody tr [data-field="audit"]'));
+
+        return $audits[$text] ?? throw new RuntimeException(sprintf('На %s нет строки с текстом %s', $url, $text));
     }
 
     /**

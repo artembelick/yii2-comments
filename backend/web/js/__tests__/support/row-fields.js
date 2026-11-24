@@ -24,3 +24,21 @@ export const auditOf = (row) => {
 
   return { text: element?.textContent ?? null, hidden: element instanceof HTMLElement ? element.hidden : undefined };
 };
+
+/**
+ * Действия строки: ссылки и кнопки форм, их текст, адрес (href ссылки или action формы кнопки) и data-confirm.
+ *
+ * @param {HTMLTableRowElement} row
+ * @returns {{ tag: string, text: string, url: string | null, confirm: string | null }[]}
+ */
+export const actionsOf = (row) => {
+  /** @type {NodeListOf<HTMLAnchorElement | HTMLButtonElement>} */
+  const controls = row.querySelectorAll("a, button");
+
+  return [...controls].map((control) => ({
+    tag: control.tagName,
+    text: control.textContent.trim(),
+    url: control.getAttribute("href") ?? control.closest("form")?.getAttribute("action") ?? null,
+    confirm: control.dataset["confirm"] ?? null,
+  }));
+};

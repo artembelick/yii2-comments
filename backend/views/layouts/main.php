@@ -33,6 +33,13 @@ AppAsset::register($this);
 <?php endif ?>
 <main class="flex-shrink-0">
     <div class="container py-4">
+        <?php // Итог действия админа после редиректа: сохранено, удалено, изменений нет и т. п.?>
+        <?php // Вид флэша — класс алерта: success — изменение, info — ничего не изменилось.?>
+        <?php foreach (Yii::$app->session->getAllFlashes() as $type => $flash): ?>
+            <?php if (is_string($flash) && in_array($type, ['success', 'info'], true)): ?>
+                <div class="alert alert-<?= $type ?>" role="status"><?= Html::encode($flash) ?></div>
+            <?php endif ?>
+        <?php endforeach ?>
         <?= $content ?>
     </div>
 </main>

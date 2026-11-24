@@ -4,19 +4,65 @@ import { describe, expect, it } from "vitest";
 import messages from "../../../../tests/_data/messages.json" with { type: "json" };
 import { PageMarkupError } from "../page-markup-error.js";
 import { createRowRenderer } from "../row-renderer.js";
-import { auditOf, fields } from "./support/row-fields.js";
+import { actionsOf, auditOf, fields } from "./support/row-fields.js";
 
-/** Содержимое шаблона строки, как его кладёт сервер в backend/views/comment/index.php. */
+/** Содержимое шаблона строки, как его кладёт сервер в backend/views/comment/index.php (CSRF-поле опущено). */
 const TEMPLATE = `<tr data-id="">
   <td data-field="author"></td>
   <td class="comment-text" data-field="text"></td>
   <td data-field="createdAt"></td>
   <td><span class="comment-audit" data-field="audit"></span></td>
+  <td>
+    <span data-actions="active">
+      <a href="/comments/{id}/edit">${messages["admin.action.edit"]}</a>
+      <form method="post" action="/comments/{id}/delete">
+        <button type="submit" data-confirm="${messages["admin.confirm.delete"]}">${messages["admin.action.delete"]}</button>
+      </form>
+    </span>
+    <span data-actions="deleted">
+      <form method="post" action="/comments/{id}/restore">
+        <button type="submit" data-confirm="${messages["admin.confirm.restore"]}">${messages["admin.action.restore"]}</button>
+      </form>
+    </span>
+  </td>
 </tr>`;
 
 const AUDIT_TEXTS = { updated: messages["admin.audit.updated"], deleted: messages["admin.audit.deleted"] };
 const UPDATED_BY_ANNA = messages["admin.audit.updated"].replace("{login}", "anna");
 const DELETED_BY_BORIS = messages["admin.audit.deleted"].replace("{login}", "boris");
+
+/**
+ * Действия строки по статусу: ссылка или кнопка, текст, адрес и data-confirm.
+ *
+ * @type {{ name: string, status: "active" | "deleted", expected: { tag: string, text: string, url: string, confirm: string | null }[] }[]}
+ */
+const ACTIONS = [
+  {
+    name: "у активного ссылка «Редактировать» и форма с кнопкой «Удалить»",
+    status: "active",
+    expected: [
+      { tag: "A", text: messages["admin.action.edit"], url: "/comments/42/edit", confirm: null },
+      {
+        tag: "BUTTON",
+        text: messages["admin.action.delete"],
+        url: "/comments/42/delete",
+        confirm: messages["admin.confirm.delete"],
+      },
+    ],
+  },
+  {
+    name: "у удалённого форма с кнопкой «Восстановить»",
+    status: "deleted",
+    expected: [
+      {
+        tag: "BUTTON",
+        text: messages["admin.action.restore"],
+        url: "/comments/42/restore",
+        confirm: messages["admin.confirm.restore"],
+      },
+    ],
+  },
+];
 
 /** @type {import("../api.js").SerializedComment} */
 const COMMENT = {
@@ -87,6 +133,12 @@ describe("row-renderer", () => {
     ]);
   });
 
+  it("UNIT-JS-ROW-01: дата создания в ISO стоит в data-created-at: по ней удалённый или восстановленный встаёт на место", () => {
+    const row = render(COMMENT);
+
+    expect(row.dataset["createdAt"]).toBe("2026-11-24T11:05:00Z");
+  });
+
   it("UNIT-JS-ROW-01: каждая строка — свой клон, шаблон не меняется", () => {
     const source = template();
     const renderer = createRowRenderer({ template: source, timeZone: "Europe/Moscow", messages: AUDIT_TEXTS });
@@ -109,6 +161,12 @@ describe("row-renderer", () => {
     expect(() => renderer.render(COMMENT)).toThrow(PageMarkupError);
   });
 
+  it.each(ACTIONS)("UNIT-JS-ROW-04: $name, у кнопки data-confirm из каталога", ({ status, expected }) => {
+    const row = render({ ...COMMENT, status });
+
+    expect(actionsOf(row)).toStrictEqual(expected);
+  });
+
   it("UNIT-JS-ROW-02: HTML в имени и тексте остаётся текстом, новых элементов в строке нет", () => {
     const row = render({
       ...COMMENT,
@@ -116,11 +174,12 @@ describe("row-renderer", () => {
       text: "<script>window.__xss=1</script>",
     });
 
-    expect([row.querySelectorAll("*").length, fields(row)["author"], fields(row)["text"]]).toStrictEqual([
-      template().content.querySelectorAll("tr *").length,
-      '<img src=x onerror="window.__xss=1">',
-      "<script>window.__xss=1</script>",
-    ]);
+    expect([
+      row.querySelectorAll("[data-field] *").length,
+      row.querySelectorAll("img, script").length,
+      fields(row)["author"],
+      fields(row)["text"],
+    ]).toStrictEqual([0, 0, '<img src=x onerror="window.__xss=1">', "<script>window.__xss=1</script>"]);
   });
 
   it.each(AUDITS)("UNIT-JS-ROW-03: $name", ({ audit, text, hidden }) => {

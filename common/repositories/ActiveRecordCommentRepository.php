@@ -32,6 +32,34 @@ final class ActiveRecordCommentRepository implements CommentRepositoryInterface
         return Comment::findOne($id);
     }
 
+    /**
+     * Условные UPDATE: условие на статус стоит в WHERE, поэтому два админа, нажавшие одновременно,
+     * не перезапишут друг друга — второй получит false.
+     */
+    #[Override]
+    public function updateText(int $id, string $text, int $adminId, DateTimeImmutable $now): bool
+    {
+        return Comment::updateAll(
+            ['text' => $text, 'updated_at' => $now->format(self::TIMESTAMP), 'updated_by' => $adminId],
+            ['id' => $id, 'deleted_at' => null],
+        ) === 1;
+    }
+
+    #[Override]
+    public function markDeleted(int $id, int $adminId, DateTimeImmutable $now): bool
+    {
+        return Comment::updateAll(
+            ['deleted_at' => $now->format(self::TIMESTAMP), 'deleted_by' => $adminId],
+            ['id' => $id, 'deleted_at' => null],
+        ) === 1;
+    }
+
+    #[Override]
+    public function markRestored(int $id): bool
+    {
+        return Comment::updateAll(['deleted_at' => null, 'deleted_by' => null], ['and', ['id' => $id], ['not', ['deleted_at' => null]]]) === 1;
+    }
+
     #[Override]
     public function page(CommentStatus $status, int $page, int $perPage): CommentPage
     {
