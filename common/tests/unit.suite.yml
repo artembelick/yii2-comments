@@ -3,3 +3,13 @@ actor: UnitTester
 modules:
   enabled:
     - Asserts
+    # Приложение Yii на каждый тест. В БД ходят только тесты репозиториев, AR и фикстур (ИЗ-5):
+    # модуль открывает транзакцию при первом соединении и откатывает её после теста.
+    - Yii2:
+        configFile: config/test.php
+        applicationClass: yii\console\Application
+        part: [orm, fixtures]
+        transaction: true
+        cleanup: false
+    - common\tests\_support\FixturesModule
+    - common\tests\_support\ContainerReset

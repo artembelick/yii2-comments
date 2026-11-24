@@ -1,3 +1,29 @@
-.comment-text {
+.comment-text,
+.comment-audit {
     white-space: pre-line;
+}
+
+/* Строка, пришедшая по WS: подсветку ставит и через 3 секунды снимает comment-list.js. */
+tr[data-highlighted="true"] > td {
+    background: var(--bs-warning-bg-subtle);
+    transition: background 0.3s;
+}
+
+/* Индикатор связи с WS-сервером: состояние ставит status-indicator.js в data-state. */
+.ws-status {
+    font-size: 0.875rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.375rem;
+    background: var(--bs-secondary-bg);
+    color: var(--bs-secondary-color);
+}
+
+.ws-status[data-state="online"] {
+    background: var(--bs-success-bg-subtle);
+    color: var(--bs-success-text-emphasis);
+}
+
+.ws-status[data-state="reconnecting"] {
+    background: var(--bs-warning-bg-subtle);
+    color: var(--bs-warning-text-emphasis);
 }

@@ -4,7 +4,7 @@
 
 **Blocked by:** 04.
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Внешний цикл (пишется первым):**
 - E2E-01 зелёный целиком;
@@ -12,11 +12,54 @@
 - E2E-07 (баннер не на первой странице).
 
 **Внутренний цикл (TDD, по одному тесту):**
-- Unit PHP: UNIT-SER-01…02, PUB-01…02, SVC-01 (с публикацией события), SVC-02, AR-04, DSP-01, DSP-04, DSP-05, BC-06
-- Unit JS: UNIT-JS-API-02, JS-WS-03, JS-WS-08, JS-FMT-01…02, JS-ROW-01…03, JS-LIST-01, JS-LIST-02, JS-LIST-06, JS-LIST-07
+- Unit PHP: UNIT-SER-01…02, PUB-01…02, SVC-01 (с публикацией события), SVC-02, AR-04, DSP-01, DSP-04, DSP-05, BC-06, SUB-01…03 (после ревью)
+- Unit JS: UNIT-JS-API-02, JS-WS-03, JS-WS-08, JS-FMT-01…02, JS-ROW-01…03, JS-LIST-01, JS-LIST-02, JS-LIST-06, JS-LIST-07, JS-RELOAD-01…04 (после ревью)
 - Regression: REG-A-21 (список), A-33, A-61, A-61a, A-70 и A-71 для создания, REG-WS-06, WS-07 для создания
 
 **Готово, когда:**
-- [ ] Перечисленные тесты зелёные, тесты срезов 02–04 остаются зелёными, покрытие 100%
-- [ ] `make check` и CI полностью зелёные
-- [ ] `/code-review` среза пройден
+- [x] Перечисленные тесты зелёные, тесты срезов 02–04 остаются зелёными, покрытие 100%
+- [x] Флаг `--pass-with-no-tests` у `test-regression-ws-exclusive` в Makefile убран: в ярусе exclusive REG-WS появились WS-06 и WS-07
+- [x] `make check` и CI полностью зелёные (CI-ран 45452697316 на b22e0eb)
+- [x] `/code-review` среза пройден (ревью проведено, находки исправлены)
+
+## Comments
+
+**Реализация (ветка `slice/05-new-comment-live`).** Внешний цикл: E2E-05 и E2E-07 написаны первыми, E2E-01 зелёный целиком. `make check` в worktree зелёный: lint, unit (покрытие PHP и JS 100%), smoke, REST-regression, REG-WS (оба яруса), e2e. CI не запускался, ветка не запушена.
+
+Что сделано:
+- P8: `common\services\CommentSerializer`, связи `Comment::updatedByUser` и `deletedByUser` (репозиторий подгружает их вместе со страницей), `common\events\EventPublisherInterface` + `RedisEventPublisher` + `EventPublishException`, `RedisClientInterface::publish`. `CommentService::create` публикует `comment.created`; сбой публикации пишется в лог с id комментария и действие не отменяет.
+- P9: `ws\RedisDispatcher`; подписку держит `ws/runtime/RedisSubscriber` (workerman/redis), `server.php` по-прежнему без ветвлений и в 60 строках. Со срезом 05 процесс подписан только на `comments.events`, `ws.control` — срез 07.
+- P10: `GET /api/comments` (`CommentController::actionList`), `api.fetchList`, `format.js`, `row-renderer.js`, `comment-list.js`, `ws-client` с `onEvent` и `onReconnected` (после переподключения `main.js` перечитывает страницу), `page.js` читает вид списка, часовой пояс, таблицу, баннер и шаблон строки. В списке колонка «Изменения» (аудит), `<template>` строки, баннер-ссылка «N новых» на первую страницу «Активных». В каталог добавлены `admin.col.audit`, `admin.audit.updated`, `admin.audit.deleted`, `admin.banner.new`.
+- Regression: A-21 (список), A-33, A-61, A-61a; A-70 и A-71 для создания — в `frontend/tests/regression/CommentEventsCest.php` (создание делает гость), подписчик с меткой `common/tests/_support/RedisChannelProbe`; REG-WS-06 и WS-07 (создание) в ярусе exclusive, флаг `--pass-with-no-tests` убран.
+
+Отклонения от плана (внесены в `docs/test-plans/`):
+- Таблица списка есть и на пустой вкладке, скрытая: в неё встаёт комментарий из WS. REG-A-32 теперь проверяет, что таблица скрыта, а не отсутствует. LIST-01 и LIST-07 дополнены пустой вкладкой; LIST-01 — обрезкой полной страницы до `perPage`.
+- `createCommentList` получает ещё `table`, `emptyState`, `bannerText` и `timers`; подсветка — атрибут `data-highlighted`, а не класс. `formatNewBanner(count, pattern)`: шаблон ICU сервер кладёт в `data-pattern` баннера.
+- ROW-01 дополнен ошибкой разметки (нет `<tr>` или поля), API-04 — `fetchList` без `items`, WS-03 — событие без объекта `comment`, DSP-04 — JSON не объект и нет `type`, DSP-05 — упавшее соединение закрывается 1011, RDS-01 — `publish`.
+- Один тест LIST-03 («updated для строки, которой нет на странице → ничего») написан уже здесь: ветку «не created» требует покрытие. Остальное LIST-03 — срез 06.
+- `.oxlintrc.json`: `unicorn/no-null` выключен для тестов клиента и `e2e/tests` — `null` там значение полей JSON-контракта.
+
+**Исправления после ревью.**
+
+Исправлено:
+- Гонка «событие ↔ перечитывание» и проглоченная ошибка перечитывания. Новый модуль `backend/web/js/list-reload.js` (`createListReload`, UNIT-JS-RELOAD-01…04, тест-план дополнен). Пока ответ `/api/comments` в пути, события WS копятся и применяются после `replaceAll`; повтор показанного отсекает `comment-list`. Ответ устаревшего перечитывания (или его отказ) отбрасывается по номеру запроса. `UnavailableError` → накопленные события применяются, повтор через свой backoff (1, 2, 4… до 30 с); `UnauthorizedError` → на логин. Unhandled rejection больше нет. `main.js` только связывает модули (60 строк).
+- Таймауты Redis для web-процессов: у компонента `redis` в `common/config/main.php` `connectionTimeout` и `dataTimeout` по 3 с. POST гостя при «молчащем» Redis ждёт секунды, а не `default_socket_timeout` (60 с). У ws-процесса свои 2 с, как и раньше.
+- `RedisSubscriber` берёт адрес (в том числе `unixSocket`), таймаут соединения, TLS (`useSSL`, `contextOptions`) и AUTH (`password` или `username`+`password`) у того же компонента `redis` через `ws\RedisSubscriberSettings` (UNIT-SUB-01…03). Номер базы не нужен: каналы pub/sub общие для всех баз.
+- `row-renderer.js`: логин подставляется функцией, `$&` и `$'` в логине больше не искажают текст аудита (ROW-03 дополнен).
+- Мелочи по правилам: «бэкенд» → «сервер» в `api.js`; ЧТ-7 — тексты аудита в ROW-03 из каталога, для FMT-02 исключение записано в `rules.md` (ожидание из того же разбора было бы тавтологией); ЧТ-2 — REG-A-61 разнесён на «Активные» × страница, «Удалённые» × страница и поля контракта, UNIT-AR-04 — провайдер «связь × колонка» (связь без аудита → null; связь отдаёт админа своей колонки, в другой колонке другой админ), REG-WS-07 — одно действие, pong как метка конца собирает `WsProbe::messagesUntilPong`; ЧТ-5 — A-61 создаёт комментарии только своей вкладки, хелпер BC-06 отдаёт удалённый комментарий; ЧТ-4 — `?? []` и `(array)` в A-61/A-70 убраны (`RedisChannelProbe::commentsOf`); ПР-3 — `expects(never())` в BC-01/BC-06 заменены стабом.
+
+Красная фаза (ADR 0001) подтверждена задним числом для тестов, написанных после кода. Каждая мутация вносилась во временную копию, тест запускался на стенде и мутация откатывалась:
+- `CommentSerializer`: без `setTimezone('UTC')` → SER-01 красный; `updatedAt` всегда null → SER-01 красный; `updatedBy`/`deletedBy` перепутаны → SER-01 красный; лишнее поле → SER-01 красный; статус всегда active → SER-01 и SER-02 (deleted) красные; статус всегда deleted → SER-02 (active) красный.
+- `Comment`: `updatedByUser` по `deleted_by` → AR-04 (updatedByUser) красный; `deletedByUser` по `updated_by` → AR-04 (deletedByUser) красный; перевёрнутый link → AR-04 красный (ошибка SQL); без метода `getDeletedByUser` → AR-04 красный, SER остаётся зелёным (контроль: покрытие разделено правильно).
+- REG-A-70: без `publish` в `CommentService::create` → красный. REG-A-71: `create` до валидации → «невалидная отправка» красный; `create` до проверки rate limit → «rate limit» красный (и A-70: два события).
+- REG-A-61/A-61a: без маршрута `api/comments` → все A-61 и A-61a красные.
+- `list-reload`: без `backoff.reset()` → RELOAD-03 «удачный повтор» красный; без отбрасывания устаревшего отказа → RELOAD-02 «отказ устаревшего» красный. Остальные RELOAD и SUB-01…03 написаны до кода и падали по правильной причине.
+- Не покрыто тестом: `with(['updatedByUser','deletedByUser'])` в `ActiveRecordCommentRepository` — производительность (N+1), не поведение.
+
+Оставлено (предложения для следующих срезов):
+- Потеря событий между серверным рендером страницы и первым `auth.ok`. План прямо говорит обратное (UNIT-JS-WS-08: «при первом подключении не вызывается»), ADR 0002 описывает только разрыв, поэтому поведение не менял. Предложение: вызывать перечитывание и на первом `auth.ok` (переименовать `onReconnected` в `onOnline`, поправить JS-WS-08 и ADR 0002) — один дешёвый запрос, `list-reload` уже держит гонку с событиями.
+- После перечитывания на стр. 2+ и на «Удалённых» баннер «N новых» обнуляется (LIST-07), а строки страницы сдвигаются. Предложение: считать баннер по разнице `totalCount` из ответа и снимка страницы или осознанно записать поведение в E2E-07.
+- Сбой публикации в Redis (SVC-02) и разрыв подписки `RedisSubscriber` теряют события тихо: WS-соединение живо, перечитывания нет. Предложение: при переподключении подписчика закрывать WS-соединения процесса кодом разрыва (клиенты перечитают список); нужен колбэк переподключения workerman/redis — `ws/runtime` без логики, значит, через отдельный класс.
+- `format.js`: если нужной plural-формы в шаблоне нет, баннер покажет «undefined». В каталоге one/few/many есть; предложение — падать на `other` или бросать ошибку разметки вместе со сверкой каталога.
+- Запахи: тип события строкой в трёх местах (enum в PHP при срезе 06, когда типов станет четыре); `EventPublisherInterface::CONTROL` — задел под срез 07; билдер Comment с `populateRelation` повторяется в тестах; CSRF-хелпер в `e2e/support/guest.ts` и `admin.ts`, ICU-разбор в `format.js` и `e2e/support/messages.ts`; имена `$comments` для `CommentPage`, `rows` для рендерера, `k26`. Правка не меняет поведение и затрагивает много файлов — оставлено на рефакторинг вместе со срезом 06.
+- Пагинатор на стр. 1 при вставке строк не обновляется — спека этого не требует.

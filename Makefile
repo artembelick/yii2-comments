@@ -1,7 +1,7 @@
 # Всё запускается в контейнерах: на хосте нужны только Docker и make.
 #
 # Dev-стенд:      make up / make down / make migrate
-# Проверки:       make check = lint → unit → smoke → regression → e2e, первый красный шаг останавливает цепочку.
+# Проверки:       make check = lint → unit → админ для smoke → smoke → regression → e2e, первый красный шаг останавливает цепочку.
 #                 Интеграционные наборы идут на отдельном тестовом стенде (compose-проект comments-test),
 #                 который make check поднимает и после прогона сносит.
 # Повтор порядка: SEED=<число> make test-unit (seed печатают Codeception и Vitest в начале прогона).
@@ -19,20 +19,21 @@ PHP_RUN := $(STAND) run --rm --no-deps -T php
 NODE_RUN := $(STAND) run --rm --no-deps -T node
 # На поднятом стенде.
 PHP_STAND := $(STAND) exec -T php
-# Пустые проекты Playwright не падают, пока в них нет тестов: smoke и e2e-parallel заполняет срез 02,
-# REG-WS — срез 04. Срез 04 убирает флаг: проект без тестов значит сломанный testDir.
-PLAYWRIGHT := $(STAND) run --rm -T playwright npx playwright test --pass-with-no-tests
+# php-fpm пишет от www-data, а /app — bind mount с владельцем с хоста. На Linux (CI) каталоги из git
+# приходят с 755 и чужим владельцем, и AssetManager отвечает 500 «directory is not writable».
+# Docker Desktop на macOS права в bind mount не проверяет, поэтому локально это не видно.
+# Как yii init в шаблонах Yii: web/assets открыт на запись после подъёма стенда.
+CHMOD_WEB_ASSETS := chmod 0777 frontend/web/assets backend/web/assets
+# Проект Playwright без тестов — это сломанный testDir, и прогон падает. Пустой шард CI не в счёт:
+# Playwright считает тесты до разбиения на шарды.
+PLAYWRIGHT := $(STAND) run --rm -T playwright npx playwright test
 
 CODECEPT_SEED := $(if $(SEED),--seed $(SEED),)
 CODECEPT_SHARD := $(if $(SHARD),--shard $(SHARD),)
 PLAYWRIGHT_SHARD := $(if $(SHARD),--shard=$(SHARD),)
 
-# Пока тестов нет (каркас, тикет 01), правила tools/checks с пустыми glob'ами не падают.
-# Срез 02 убирает флаг: правило, которое ничего не проверяет, должно ронять lint.
-CHECKS_FLAGS := --allow-empty
-
 .PHONY: help up down install migrate admin lint lint-php lint-js lint-docker lint-checks lint-php-files lint-js-files lint-js-types fix \
-	stand-up stand-down test-unit test-unit-php test-unit-js test-smoke test-regression \
+	stand-up stand-down stand-logs test-unit test-unit-php test-unit-js test-smoke test-regression \
 	test-regression-pristine test-regression-parallel test-regression-exclusive \
 	test-regression-ws-parallel test-regression-ws-exclusive test-e2e test-e2e-parallel test-e2e-exclusive \
 	coverage check
@@ -47,6 +48,7 @@ help: ## Список целей
 
 up: .env ## Поднять dev-стенд и применить миграции
 	$(DEV) up -d --build --wait
+	$(DEV) exec -T php $(CHMOD_WEB_ASSETS)
 	$(DEV) exec -T php ./yii migrate --interactive=0
 
 down: ## Остановить dev-стенд
@@ -60,8 +62,8 @@ install: .env ## Поставить зависимости PHP и JS
 migrate: ## Применить миграции на dev-стенде
 	$(DEV) exec -T php ./yii migrate --interactive=0
 
-admin: ## Создать админа для smoke на тестовом стенде (логин и пароль из .env.test). Команда admin/create появляется в срезе 02
-	$(PHP_STAND) sh -c './yii admin/create "$$SMOKE_ADMIN_LOGIN" "$$SMOKE_ADMIN_PASSWORD"'
+admin: ## Создать админа для smoke на тестовом стенде (логин и пароль из .env.test). Пароль идёт через STDIN
+	$(PHP_STAND) sh -c 'printf "%s\n" "$$SMOKE_ADMIN_PASSWORD" | ./yii admin/create "$$SMOKE_ADMIN_LOGIN"'
 
 # --- Линтеры -----------------------------------------------------------------
 
@@ -86,7 +88,7 @@ lint-docker:
 	$(STAND) run --rm --no-deps -T hadolint hadolint docker/php/Dockerfile
 
 lint-checks:
-	$(NODE_RUN) node tools/checks/bin.js $(CHECKS_FLAGS)
+	$(NODE_RUN) node tools/checks/bin.js
 
 # Для lefthook pre-commit: линтеры только по изменённым файлам (FILES — список через пробел).
 lint-php-files:
@@ -109,10 +111,14 @@ fix: ## Автоисправление стиля
 
 stand-up: ## Поднять тестовый стенд и применить миграции
 	$(STAND) up -d --build --wait php ws nginx postgres redis
+	$(PHP_STAND) $(CHMOD_WEB_ASSETS)
 	$(PHP_STAND) ./yii migrate --interactive=0
 
 stand-down: ## Снести тестовый стенд вместе с данными
 	$(STAND) down -v --remove-orphans
+
+stand-logs: ## Логи контейнеров тестового стенда (CI печатает их при падении)
+	$(STAND) logs --no-color --timestamps php ws nginx
 
 # --- Тесты -------------------------------------------------------------------
 
@@ -165,8 +171,8 @@ coverage: test-unit ## Покрытие: clover и cobertura PHP в tests/_outpu
 	@echo "PHP: tests/_output/coverage-php.xml, tests/_output/cobertura-php.xml"
 	@echo "JS:  tests/_output/coverage-js/lcov.info"
 
-check: ## lint → unit → smoke → regression → e2e на свежем тестовом стенде, после прогона стенд сносится
+check: ## lint → unit → админ для smoke → smoke → regression → e2e на свежем тестовом стенде, после прогона стенд сносится
 	$(MAKE) lint
 	$(MAKE) stand-down
 	trap '$(MAKE) stand-down' EXIT; \
-		$(MAKE) test-unit && $(MAKE) test-smoke && $(MAKE) test-regression && $(MAKE) test-e2e
+		$(MAKE) test-unit && $(MAKE) admin && $(MAKE) test-smoke && $(MAKE) test-regression && $(MAKE) test-e2e

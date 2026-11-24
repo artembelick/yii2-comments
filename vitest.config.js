@@ -10,8 +10,6 @@ process.stdout.write(`[vitest] seed ${seed}. Повторить: VITEST_SEED=${s
 export default defineConfig({
   test: {
     sequence: { shuffle: true, seed },
-    // Тестов клиента админки пока нет (появляются в срезе 04): пустой проект admin-js не роняет прогон.
-    passWithNoTests: true,
     // ИЗ-4: всё глобальное, что поменял тест, возвращается на место.
     restoreMocks: true,
     unstubEnvs: true,

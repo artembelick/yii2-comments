@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use common\web\PlaceholderController;
+use common\web\SessionCookie;
 use yii\log\FileTarget;
 
 /** @var Closure(string): string $env */
@@ -13,20 +13,27 @@ return [
     'name' => 'Комментарии',
     'basePath' => dirname(__DIR__),
     'controllerNamespace' => 'frontend\controllers',
-    'defaultRoute' => 'placeholder/index',
-    'controllerMap' => [
-        'placeholder' => PlaceholderController::class,
-    ],
+    'defaultRoute' => 'comment/index',
     'components' => [
         'request' => [
             'cookieValidationKey' => $env('FRONTEND_COOKIE_KEY'),
             'csrfParam' => '_csrf-frontend',
         ],
-
+        // Своё имя cookie: сессия гостя не пересекается с сессией админки (REG-G-31).
+        'session' => [
+            'name' => SessionCookie::PUBLIC_SITE,
+            'cookieParams' => ['httponly' => true, 'samesite' => 'Lax'],
+        ],
+        // Маршруты публичной части (docs/test-plans/unit.md, «Веб-слой»). Всё, что не описано, — 404.
+        // Адрес отправки принимает любой метод: GET на него отклоняет VerbFilter с 405 (REG-G-23).
         'urlManager' => [
             'enablePrettyUrl' => true,
             'showScriptName' => false,
-            'enableStrictParsing' => false,
+            'enableStrictParsing' => true,
+            'rules' => [
+                '' => 'comment/index',
+                'comments' => 'comment/create',
+            ],
         ],
         'log' => [
             'traceLevel' => YII_DEBUG ? 3 : 0,

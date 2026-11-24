@@ -22,8 +22,24 @@ AppAsset::register($this);
 </head>
 <body class="d-flex flex-column h-100">
 <?php $this->beginBody() ?>
+<?php if (!Yii::$app->user->getIsGuest()): ?>
+    <header class="border-bottom">
+        <div class="container py-2 d-flex justify-content-end">
+            <?= Html::beginForm(['auth/logout'], 'post', ['id' => 'logout-form']) ?>
+                <?= Html::submitButton(Html::encode(Yii::t('app', 'admin.logout')), ['class' => 'btn btn-outline-secondary btn-sm']) ?>
+            <?= Html::endForm() ?>
+        </div>
+    </header>
+<?php endif ?>
 <main class="flex-shrink-0">
     <div class="container py-4">
+        <?php // Итог действия админа после редиректа: сохранено, удалено, изменений нет и т. п.?>
+        <?php // Вид флэша — класс алерта: success — изменение, info — ничего не изменилось.?>
+        <?php foreach (Yii::$app->session->getAllFlashes() as $type => $flash): ?>
+            <?php if (is_string($flash) && in_array($type, ['success', 'info'], true)): ?>
+                <div class="alert alert-<?= $type ?>" role="status"><?= Html::encode($flash) ?></div>
+            <?php endif ?>
+        <?php endforeach ?>
         <?= $content ?>
     </div>
 </main>

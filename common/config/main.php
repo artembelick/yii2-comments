@@ -2,6 +2,18 @@
 
 declare(strict_types=1);
 
+use common\events\EventPublisherInterface;
+use common\events\RedisEventPublisher;
+use common\redis\RedisClientInterface;
+use common\redis\YiiRedisClient;
+use common\repositories\ActiveRecordCommentRepository;
+use common\repositories\ActiveRecordUserRepository;
+use common\repositories\CommentRepositoryInterface;
+use common\repositories\UserRepositoryInterface;
+use common\security\RateLimiter;
+use common\security\RateLimiterInterface;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\NativeClock;
 use yii\base\Event;
 use yii\db\Connection;
 use yii\i18n\PhpMessageSource;
@@ -18,6 +30,17 @@ return [
     'aliases' => [
         '@bower' => '@vendor/bower-asset',
         '@npm' => '@vendor/npm-asset',
+    ],
+    // Реализации интерфейсов для DI. Unit-тесты подменяют их моками (docs/test-plans/unit.md, «Изоляция»).
+    'container' => [
+        'definitions' => [
+            UserRepositoryInterface::class => ActiveRecordUserRepository::class,
+            CommentRepositoryInterface::class => ActiveRecordCommentRepository::class,
+            ClockInterface::class => NativeClock::class,
+            RedisClientInterface::class => static fn(): YiiRedisClient => new YiiRedisClient(Yii::$app->get('redis')),
+            RateLimiterInterface::class => RateLimiter::class,
+            EventPublisherInterface::class => RedisEventPublisher::class,
+        ],
     ],
     'components' => [
         'db' => [
@@ -37,6 +60,16 @@ return [
             'hostname' => $env('REDIS_HOST'),
             'port' => (int) $env('REDIS_PORT'),
             'database' => 0,
+            // Без таймаутов недоступный Redis (пакеты теряются, отказа нет) держал бы запрос гостя
+            // до default_socket_timeout — 60 секунд. Ws-процесс задаёт свои, ещё короче (ws/config/main.php).
+            'connectionTimeout' => 3,
+            'dataTimeout' => 3,
+        ],
+        // В БД и JSON время в UTC, на экране — в DISPLAY_TIMEZONE (docs/test-plans/unit.md, «Схема»).
+        'formatter' => [
+            'defaultTimeZone' => 'UTC',
+            'timeZone' => $env('DISPLAY_TIMEZONE'),
+            'datetimeFormat' => 'php:d.m.Y H:i',
         ],
         'i18n' => [
             'translations' => [
