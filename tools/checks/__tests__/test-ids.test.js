@@ -1,7 +1,7 @@
 // @ts-check
 import { describe, expect, it } from "vitest";
 
-import { extractPlanIds, testIds } from "../rules/test-ids.js";
+import { extractPlanIds, implementedIds, testIds, unimplementedPlanIds } from "../rules/test-ids.js";
 import { PRODUCT_TEST_FILES } from "../test-locations.js";
 
 const PLAN = [
@@ -95,5 +95,81 @@ describe("test-ids", () => {
 
   it("применяется к тестам продукта: тесты проверок не описаны в тест-планах", () => {
     expect(testIds.files).toStrictEqual(PRODUCT_TEST_FILES);
+  });
+
+  it("реализован тот ID, с которого начинается имя теста: строка JS, TestDox, docblock Cest", () => {
+    const tests = [
+      { path: "backend/web/js/__tests__/a.test.js", text: "\nit.each([1])('UNIT-JS-BO-01: %s', () => {});\n" },
+      { path: "e2e/tests/smoke/a.spec.ts", text: '\ntest("SMOKE-01: открывается", async () => {});\n' },
+      { path: "common/tests/unit/NTest.php", text: "<?php\n    #[TestDox('UNIT-NORM-01: обрезает')]\n" },
+      {
+        path: "frontend/tests/regression/FCest.php",
+        text: "<?php\n    /** REG-G-13: имя */\n    /**\n     * REG-G-13a: имя\n     */\n",
+      },
+    ];
+
+    expect([...implementedIds(tests)].toSorted()).toStrictEqual([
+      "REG-G-13",
+      "REG-G-13a",
+      "SMOKE-01",
+      "UNIT-JS-BO-01",
+      "UNIT-NORM-01",
+    ]);
+  });
+
+  it("упоминание ID в комментарии или в середине строки не реализует его", () => {
+    const tests = [
+      {
+        path: "backend/web/js/__tests__/a.test.js",
+        text: "\n// UNIT-JS-BO-01: см. план\nit('UNIT-NORM-01: как в SMOKE-01: …', () => {});\n",
+      },
+    ];
+
+    expect([...implementedIds(tests)]).toStrictEqual(["UNIT-NORM-01"]);
+  });
+
+  it("сценарий плана без теста → нарушение с файлом и строкой плана", () => {
+    const tests = [
+      { path: "e2e/tests/smoke/a.spec.ts", text: '\ntest("SMOKE-01: открывается", async () => {});\n' },
+      { path: "frontend/tests/regression/FCest.php", text: "<?php\n    /** REG-G-13: имя */\n" },
+    ];
+
+    expect(unimplementedPlanIds(PLAN, tests)).toStrictEqual([
+      {
+        path: "docs/test-plans/unit.md",
+        line: 3,
+        message: "UNIT-NORM-01 из плана не реализован: ни одно имя теста не начинается с этого ID",
+      },
+      {
+        path: "docs/test-plans/unit.md",
+        line: 4,
+        message: "UNIT-JS-BO-01 из плана не реализован: ни одно имя теста не начинается с этого ID",
+      },
+      {
+        path: "docs/test-plans/e2e.md",
+        line: 1,
+        message: "E2E-01 из плана не реализован: ни одно имя теста не начинается с этого ID",
+      },
+      {
+        path: "docs/test-plans/e2e.md",
+        line: 2,
+        message: "E2E-FIX-01 из плана не реализован: ни одно имя теста не начинается с этого ID",
+      },
+      {
+        path: "docs/test-plans/regression.md",
+        line: 3,
+        message: "REG-G-13a из плана не реализован: ни одно имя теста не начинается с этого ID",
+      },
+      {
+        path: "docs/test-plans/regression.md",
+        line: 5,
+        message: "REG-A-08a из плана не реализован: ни одно имя теста не начинается с этого ID",
+      },
+      {
+        path: "docs/test-plans/regression.md",
+        line: 6,
+        message: "REG-WS-01 из плана не реализован: ни одно имя теста не начинается с этого ID",
+      },
+    ]);
   });
 });

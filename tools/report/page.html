@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Отчёт о тестах</title>
+    <!--
+  Шаблон главной страницы отчёта, собирает make report (tools/report/page.js). Подстановки в двойных фигурных скобках:
+  run, coverage и requirements — разделы из прогона; file:путь и test:ID — ссылки на файлы по SHA прогона.
+  Несуществующий файл или нереализованный ID роняет сборку.
+-->
+    <style>
+      :root {
+        --bg: #fff;
+        --fg: #1d1d1f;
+        --muted: #5f6368;
+        --line: #d9dce1;
+        --accent: #0b57d0;
+        --bad: #b3261e;
+        --code: #f1f3f4;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #16181c;
+          --fg: #e8eaed;
+          --muted: #9aa0a6;
+          --line: #3c4043;
+          --accent: #8ab4f8;
+          --bad: #f28b82;
+          --code: #23262b;
+        }
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          16px/1.55 system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+      }
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 24px 16px 64px;
+      }
+      h1 {
+        font-size: 28px;
+        margin: 0 0 4px;
+      }
+      h2 {
+        font-size: 21px;
+        margin: 40px 0 12px;
+        padding-top: 8px;
+        border-top: 1px solid var(--line);
+      }
+      a {
+        color: var(--accent);
+      }
+      code {
+        background: var(--code);
+        padding: 1px 4px;
+        border-radius: 4px;
+        font-size: 0.9em;
+      }
+      .lead {
+        color: var(--muted);
+        margin: 0 0 16px;
+      }
+      nav ol {
+        columns: 2;
+        padding-left: 20px;
+      }
+      .scroll {
+        overflow-x: auto;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 12px 0;
+        font-size: 14px;
+      }
+      th,
+      td {
+        border-bottom: 1px solid var(--line);
+        padding: 6px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: var(--muted);
+        font-weight: 600;
+      }
+      tr.total td {
+        font-weight: 600;
+      }
+      tr.failed td:first-child,
+      .missing {
+        color: var(--bad);
+      }
+      li {
+        margin: 6px 0;
+      }
+      @media (max-width: 600px) {
+        nav ol {
+          columns: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Система комментариев на Yii2: отчёт о тестах</h1>
+      <p class="lead">
+        Гость оставляет комментарий без входа, админ правит, удаляет и восстанавливает его и получает новые по
+        WebSocket. Страница собрана из прогона CI: цифры подставлены из результатов, ссылки ведут на файлы того же
+        коммита.
+      </p>
+      <nav>
+        <ol>
+          <li><a href="#run">Итог прогона</a></li>
+          <li><a href="#coverage">Покрытие кода</a></li>
+          <li><a href="#requirements">Покрытие требований</a></li>
+          <li><a href="#pyramid">Пирамида и наборы</a></li>
+          <li><a href="#techniques">Техники тест-дизайна</a></li>
+          <li><a href="#traceability">Трассируемость и проверка тестов</a></li>
+          <li><a href="#stability">Стабильность и правила</a></li>
+          <li><a href="#stack">Стек</a></li>
+          <li><a href="#out-of-scope">Вне объёма</a></li>
+        </ol>
+      </nav>
+
+      <h2 id="run">1. Итог прогона</h2>
+      <div class="scroll">{{run}}</div>
+      <p>
+        В отчёте Allure тесты сгруппированы по набору (unit, smoke, regression, e2e) и по ID из тест-плана. У e2e видны
+        шаги <code>test.step</code>, к падениям приложены trace и скриншоты. Тесты своих инструментов (сверка ID, линтер
+        тестов, сборка этой страницы) ID не несут и идут в unit отдельной группой.
+      </p>
+
+      <h2 id="coverage">2. Покрытие кода</h2>
+      <div class="scroll">{{coverage}}</div>
+      <p>
+        Порог 100%: для PHP строки и методы, для JS строки, функции и ветки. Ниже порога
+        <code>make test-unit</code> падает ({{file:vitest.config.js}}, {{file:tools/checks/coverage.js}}). Не считаются
+        конфиги, views, миграции и entrypoint'ы без логики; ветвления в entrypoint'ах запрещает линтер
+        ({{file:tools/checks/rules/entrypoint-limits.js}}). Почему так — в {{file:docs/adr/0001-double-loop-tdd.md}}.
+      </p>
+
+      <h2 id="requirements">3. Покрытие требований</h2>
+      <p>
+        Требования — сценарии с ID в {{file:docs/test-plans/README.md}} и планах наборов. Доля считается сверкой ID: ID
+        реализован, если с него начинается имя теста. Матрица ниже — путь одного комментария от входа админа до
+        восстановления, у каждого шага тесты, которые его фиксируют. Ссылка ведёт на файл первого теста из группы.
+      </p>
+      <div class="scroll">{{requirements}}</div>
+
+      <h2 id="pyramid">4. Пирамида и наборы</h2>
+      <ul>
+        <li>
+          <strong>unit</strong> (Codeception с pcov, Vitest с coverage-v8): классы и JS-модули изолированно, без сети и
+          Redis; в БД ходят только тесты репозиториев, внутри транзакции с откатом. Быстрые и самые многочисленные:
+          держат порог покрытия. Локально в <code>make test-unit</code> и на pre-push, в CI на каждый push. Например,
+          {{test:UNIT-VAL-01}} и {{test:UNIT-JS-WS-05}}.
+        </li>
+        <li>
+          <strong>smoke</strong> (Playwright): стенд жив — страницы открываются, вход работает, WS подключается, ничего
+          не создаётся. Идёт первым после подъёма стенда и в каждом job CI со стендом: {{test:SMOKE-01}},
+          {{test:SMOKE-04}}.
+        </li>
+        <li>
+          <strong>regression</strong> (Codeception REST по HTTP, Playwright для WS-контрактов): зафиксированные
+          контракты — валидация, права, безопасность, идемпотентность, и тест на каждый найденный баг. После smoke, до
+          e2e: {{test:REG-G-13}}, {{test:REG-WS-01}}.
+        </li>
+        <li>
+          <strong>e2e</strong> (Playwright): путь комментария в настоящем браузере с гостем и несколькими админами в
+          своих browser context. Последним, потому что самый медленный: {{test:E2E-01}}, {{test:E2E-08}}.
+        </li>
+      </ul>
+      <p>
+        Порядок <code>make check</code> — от быстрого к медленному: lint → unit → smoke → regression → e2e, первый
+        красный шаг останавливает цепочку ({{file:Makefile}}). В CI на pull request и push в <code>main</code> то же
+        разбито на jobs: ярус <code>parallel</code> идёт шардами, каждый со своим стендом, <code>pristine</code> и
+        <code>exclusive</code> — одним job ({{file:.github/workflows/ci.yml}}). Масштабируется добавлением шардов: тесты
+        яруса <code>parallel</code> работают только со своими данными.
+      </p>
+      <p>
+        Код писался double-loop TDD по вертикальным срезам ({{file:docs/adr/0001-double-loop-tdd.md}}): срез начинается
+        с красного приёмочного e2e, внутри него unit и regression идут по одному тесту red → green. Сквозной
+        {{test:E2E-01}} зеленел по шагам от среза к срезу.
+      </p>
+
+      <h2 id="techniques">5. Техники тест-дизайна</h2>
+      <ul>
+        <li>
+          <strong>Граничные значения.</strong> Имя 2–64 символа: 1, 2, 64, 65 в {{test:UNIT-VAL-01}}, 64 и 65 по HTTP в
+          {{test:REG-G-14}} и {{test:REG-G-14a}}. Текст до 2000: 2000 и 2001 в {{test:UNIT-VAL-02}} и
+          {{test:REG-G-16a}}.
+        </li>
+        <li>
+          <strong>Классы эквивалентности.</strong> Провайдеры невалидных данных, один представитель на класс: тип поля в
+          {{test:UNIT-VAL-08}}, отсутствующее поле и массив вместо строки в {{test:REG-G-19}}.
+        </li>
+        <li>
+          <strong>Таблица решений.</strong> Порядок ошибок валидации: на поле одна ошибка, тип → обязательность → длина,
+          {{test:UNIT-VAL-09}}.
+        </li>
+        <li>
+          <strong>Переходы состояний.</strong> Комментарий активен ⇄ удалён, включая повторные переходы:
+          {{test:REG-A-50}}, {{test:REG-A-51}}, {{test:REG-A-52}}, {{test:REG-A-53}}, в браузере {{test:E2E-03}} и
+          {{test:E2E-04}}. Состояния WS-соединения (онлайн, переподключение, отключено) и переходы по кодам закрытия:
+          {{test:UNIT-JS-IND-01}}, {{test:UNIT-JS-WS-04}}, {{test:UNIT-JS-WS-05}}.
+        </li>
+      </ul>
+
+      <h2 id="traceability">6. Трассируемость и проверка тестов</h2>
+      <ul>
+        <li>
+          <strong>Сверка ID в обе стороны.</strong> Линтер падает на ID в тесте, которого нет в плане, и на ID плана,
+          который не реализован ни одним тестом ({{file:tools/checks/rules/test-ids.js}}, тесты проверки —
+          {{file:tools/checks/__tests__/test-ids.test.js}}). Поэтому доля в разделе 3 и матрица пути не расходятся с
+          кодом.
+        </li>
+        <li>
+          <strong>Проверка тестов мутациями.</strong> Каждый новый тест сначала был красным: на отсутствующем поведении
+          или на мутации, внесённой в код руками. Таблицы мутаций с результатами — в комментариях к тикетам
+          {{file:.scratch/comments-system/issues/05-new-comment-live.md}},
+          {{file:.scratch/comments-system/issues/06-edit-delete-restore.md}},
+          {{file:.scratch/comments-system/issues/07-session-termination.md}},
+          {{file:.scratch/comments-system/issues/08-strip-invalid-chars.md}},
+          {{file:.scratch/comments-system/issues/09-rerun-on-same-stand.md}},
+          {{file:.scratch/comments-system/issues/10-coverage-gaps.md}}. Например, без экранирования имени в админке
+          краснеет {{test:REG-A-34}}.
+        </li>
+      </ul>
+
+      <h2 id="stability">7. Стабильность и правила</h2>
+      <ul>
+        <li>
+          <strong>Ярусы.</strong> <code>pristine</code> — на пустой БД, которую цель пересоздаёт перед ярусом;
+          <code>parallel</code> — только свои данные, можно параллельно и шардами; <code>exclusive</code> — тесты на
+          общую ленту, порядок и rate limit, строго по одному. Пустая лента — {{test:REG-G-02}}, rate limit —
+          {{test:REG-G-22}}.
+        </li>
+        <li>
+          <strong>Уникальные метки.</strong> Каждый тест создаёт свои данные с меткой из id прогона
+          <code>TEST_RUN_ID</code> и Faker с seed из имени теста и ищет только их ({{file:e2e/support/tag.ts}},
+          {{test:UNIT-E2E-TAG-01}}).
+        </li>
+        <li>
+          <strong>Seed.</strong> Codeception и Vitest идут в случайном порядке, seed печатается, упавший прогон
+          повторяется с тем же seed ({{file:codeception.yml}}, {{file:vitest.config.js}}).
+        </li>
+        <li>
+          <strong>Без sleep и без повторов.</strong> Фиксированные ожидания запрещает линтер
+          ({{file:tools/checks/rules/no-fixed-waits.js}}), реальное время в тестах — тоже. В Playwright
+          <code>retries: 0</code>: флейк — это баг ({{file:e2e/playwright.config.ts}}).
+        </li>
+        <li>
+          <strong>Двойной и повторный прогон.</strong> Ночной CI дважды гоняет <code>make check</code> с разными seed и
+          <code>make test-rerun</code> — всё ещё раз на том же стенде с данными прошлого прогона
+          ({{file:.scratch/comments-system/issues/09-rerun-on-same-stand.md}}).
+        </li>
+        <li>
+          <strong>Правила тестов</strong> ({{file:docs/test-plans/rules.md}}): изоляция, детерминизм, Arrange → Act →
+          Assert без логики в теле, точные проверки, моки только на границах, поиск элементов по роли и подписи. Что
+          можно, проверяет линтер ({{file:tools/checks/rules/no-logic-in-tests.js}}), остальное — ревью каждого среза.
+        </li>
+      </ul>
+
+      <h2 id="stack">8. Стек</h2>
+      <ul>
+        <li>
+          <strong>Приложение:</strong> Yii2 на PHP 8.3, Postgres, Redis (pub/sub событий и rate limit), WebSocket-сервер
+          на Workerman ({{file:composer.json}}).
+        </li>
+        <li>
+          <strong>Окружение:</strong> Docker Compose, на хосте нужны только Docker и make ({{file:docker-compose.yml}},
+          {{file:Makefile}}).
+        </li>
+        <li>
+          <strong>Тесты:</strong> Codeception (unit и REST), Vitest, Playwright, отчёт Allure ({{file:package.json}},
+          {{file:e2e/package.json}}).
+        </li>
+        <li>
+          <strong>Линтеры:</strong> phpstan, php-cs-fixer, rector, phpcs, oxlint, oxfmt, tsc, hadolint и свои проверки
+          тестов ({{file:tools/checks/rules/index.js}}).
+        </li>
+        <li>
+          <strong>CI:</strong> GitHub Actions, страница публикуется на GitHub Pages ({{file:.github/workflows/ci.yml}}).
+        </li>
+      </ul>
+
+      <h2 id="out-of-scope">9. Вне объёма</h2>
+      <p>
+        Нагрузочные тесты, проверку заголовков безопасности, матрицу браузеров (только Chromium) и мутационное
+        тестирование инструментом осознанно не делали.
+      </p>
+    </main>
+  </body>
+</html>

@@ -17,5 +17,5 @@
     "skipLibCheck": true
   },
   "include": ["backend/web/js/**/*.js", "tools/**/*.js", "vitest.config.js"],
-  "exclude": ["tools/checks/__tests__/fixtures/**"]
+  "exclude": ["tools/*/__tests__/fixtures/**"]
 }

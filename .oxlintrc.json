@@ -18,8 +18,10 @@
     "**/tests/_output/**",
     "e2e/test-results/**",
     "e2e/playwright-report/**",
-    // Деревья-фикстуры CLI tools/checks — данные с нарушениями, а не код.
-    "tools/checks/__tests__/fixtures/**"
+    // Страница отчёта, её собирает make report.
+    "site/**",
+    // Деревья-фикстуры CLI tools/checks и tools/report — данные (в том числе с нарушениями), а не код.
+    "tools/*/__tests__/fixtures/**"
   ],
   "rules": {
     // Лимиты из docs/test-plans/README.md.
@@ -122,8 +124,8 @@
       }
     },
     {
-      // Конфиги Vitest и Playwright обязаны экспортировать конфиг по умолчанию.
-      "files": ["*.config.js", "e2e/playwright.config.ts"],
+      // Конфиги Vitest, Playwright и Allure обязаны экспортировать конфиг по умолчанию.
+      "files": ["*.config.js", "e2e/playwright.config.ts", "allurerc.js"],
       "rules": {
         "import/no-default-export": "off",
         "no-magic-numbers": "off",

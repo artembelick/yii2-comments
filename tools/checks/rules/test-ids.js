@@ -24,6 +24,25 @@ const CEST_TEST = /public function (?!_)\w+\s*\(\s*\w+Tester\s+\$I\b/gu;
 const MISSING_ID =
   "тест без ID из тест-плана: имя начинается с ID (`UNIT-VAL-01: …`), в PHP ID стоит в TestDox или docblock метода";
 
+/** Начало имени теста: строка JS, TestDox или docblock метода PHP (первая строка текста). */
+const TEST_NAME_ID = new RegExp(String.raw`(?:["'\x60]|\/\*\*\s+|^\s*\*\s+)(${FULL_ID}):`, "gmu");
+
+/**
+ * ID сценариев, объявленные в тест-планах, с файлом и строкой объявления.
+ *
+ * @param {readonly SourceFile[]} planFiles
+ * @returns {{ id: string, path: string, line: number }[]}
+ */
+const declaredPlanIds = (planFiles) =>
+  planFiles.flatMap(({ path, text }) =>
+    [
+      ...findAll(text, PLAN_ROW, ([, row, heading]) => String(row ?? heading)),
+      ...findAll(text, SHORT_REGRESSION_ROW, ([, short]) => `REG-${String(short)}`),
+    ]
+      .toSorted((left, right) => left.line - right.line)
+      .map(({ line, message: id }) => ({ id, path, line })),
+  );
+
 /**
  * ID сценариев, объявленные в тест-планах: первая ячейка строки таблицы или заголовок.
  * Упоминания в прозе не объявляют ID.
@@ -32,12 +51,36 @@ const MISSING_ID =
  * @returns {Set<string>}
  */
 export function extractPlanIds(planFiles) {
-  return new Set(
-    planFiles.flatMap(({ text }) => [
-      ...[...text.matchAll(PLAN_ROW)].map(([, row, heading]) => String(row ?? heading)),
-      ...[...text.matchAll(SHORT_REGRESSION_ROW)].map(([, short]) => `REG-${String(short)}`),
-    ]),
-  );
+  return new Set(declaredPlanIds(planFiles).map(({ id }) => id));
+}
+
+/**
+ * ID, с которых начинаются имена тестов. Упоминание в комментарии или в середине имени ID не реализует.
+ *
+ * @param {readonly SourceFile[]} testFiles
+ * @returns {Set<string>}
+ */
+export function implementedIds(testFiles) {
+  return new Set(testFiles.flatMap(({ text }) => [...text.matchAll(TEST_NAME_ID)].map(([, id]) => String(id))));
+}
+
+/**
+ * Сверка в обратную сторону: ID плана, которые не реализует ни один тест.
+ *
+ * @param {readonly SourceFile[]} planFiles
+ * @param {readonly SourceFile[]} testFiles
+ * @returns {{ path: string, line: number, message: string }[]}
+ */
+export function unimplementedPlanIds(planFiles, testFiles) {
+  const implemented = implementedIds(testFiles);
+
+  return declaredPlanIds(planFiles)
+    .filter(({ id }) => !implemented.has(id))
+    .map(({ id, path, line }) => ({
+      path,
+      line,
+      message: `${id} из плана не реализован: ни одно имя теста не начинается с этого ID`,
+    }));
 }
 
 /**

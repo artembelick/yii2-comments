@@ -1,6 +1,6 @@
 # Тест-планы
 
-Тест-планы — каталог сценариев с ID и исходный дизайн. Тесты пишутся по ним срезами через double-loop TDD (см. [ADR 0001](../adr/0001-double-loop-tdd.md)): сначала приёмочный e2e среза, затем unit и regression по одному тесту. Если TDD показывает, что сценарий неудачен, план правится вместе с тестом. В имени теста стоит полный ID с префиксом набора: `UNIT-VAL-01`, `REG-G-13`, `REG-A-08a`, `REG-WS-01`, `SMOKE-01`, `E2E-01`. В таблицах внутри своего раздела ID могут быть записаны коротко (`G-13` в разделе REG-G). Линтер падает на ID, которого нет в плане, а в финальном тикете проверяет, что реализован каждый ID плана.
+Тест-планы — каталог сценариев с ID и исходный дизайн. Тесты пишутся по ним срезами через double-loop TDD (см. [ADR 0001](../adr/0001-double-loop-tdd.md)): сначала приёмочный e2e среза, затем unit и regression по одному тесту. Если TDD показывает, что сценарий неудачен, план правится вместе с тестом. В имени теста стоит полный ID с префиксом набора: `UNIT-VAL-01`, `REG-G-13`, `REG-A-08a`, `REG-WS-01`, `SMOKE-01`, `E2E-01`. В таблицах внутри своего раздела ID могут быть записаны коротко (`G-13` в разделе REG-G). Сверка ID идёт в обе стороны: линтер падает на ID в тесте, которого нет в плане, и на ID плана, который не реализован ни одним тестом (ID стоит в начале имени теста).
 
 | Набор | Файл | Инструмент | Что проверяет | Когда запускается |
 |---|---|---|---|---|
@@ -35,7 +35,7 @@
 
 WS-клиент написан на чистом JS без сборки, но с `// @ts-check` и типами в JSDoc, поэтому `tsc` проверяет его через `checkJs`. Для тестов и `/e2e` действуют отдельные overrides, тоже с причинами.
 
-**Прочее:** hadolint для Dockerfile, `composer validate --strict`, сверка ID из тест-планов с именами тестов.
+**Прочее:** hadolint для Dockerfile, `composer validate --strict`, сверка ID из тест-планов с именами тестов в обе стороны.
 
 **Строгость тестов:**
 - **Тест без проверок — ошибка.** PHP: Codeception с `report_useless_tests`, `convert_deprecations_to_exceptions` и `error_level: E_ALL`; сам Codeception падает только на error и failure, поэтому тесты без проверок, пропуски и предупреждения роняет `tools/checks junit` по junit-отчёту. В Vitest это делает `expect.requireAssertions` в конфиге: тест без проверок падает при запуске.
@@ -45,7 +45,8 @@ WS-клиент написан на чистом JS без сборки, но с
   - trace и скриншот при падении;
   - новый browser context на каждый тест;
   - `forbidOnly`.
-- **Отчёты:** junit и покрытие (clover и cobertura для PHP, lcov для JS) пишутся в файлы.
+- **Отчёты:** junit и покрытие (clover, cobertura и HTML для PHP, lcov, json-summary и HTML для JS) пишутся в файлы. Junit читают `tools/checks junit` и CI.
+- **Allure:** все три раннера пишут результаты в `tests/_output/allure-results`: `allure-codeception` (unit и REST-regression), `allure-vitest` (unit JS), `allure-playwright` (smoke, REG-WS, e2e; шаги `test.step`, trace и скриншоты падений приложены). `make report` сводит их в один отчёт Allure 3 и собирает страницу отчёта `site/` (`tools/report`): итог прогона, покрытие кода и требований, методики и стек. Перед сборкой результаты получают имя теста из плана (у PHP — из TestDox или docblock) и группы: набор по префиксу ID (unit, smoke, regression, e2e), внутри — ID. Тесты своих инструментов ID не несут и идут в unit отдельной группой. Истории прогонов нет.
 
 ## Запуски
 
@@ -63,7 +64,7 @@ WS-клиент написан на чистом JS без сборки, но с
 | pull request и push в `main` | весь `make check`, разбитый на jobs: lint и unit; ярус `parallel` шардами; `pristine` и `exclusive` одним job. Каждый job поднимает свой стенд и сначала прогоняет smoke. `TEST_RUN_ID` генерируется первым шагом job и через `$GITHUB_ENV` достаётся всем шагам: один id на job (решение человека после ревью) |
 | по расписанию раз в сутки | весь `make check` дважды с разными seed случайного порядка (ловит зависимость тестов друг от друга, каждый на своём стенде) и `make test-rerun` (ловит зависимость от повтора на том же стенде) |
 
-Отчёты junit, покрытие, trace и скриншоты Playwright сохраняются как артефакты прогона.
+Отчёты junit, покрытие, Allure-результаты, trace и скриншоты Playwright сохраняются как артефакты прогона. После jobs стенда job `report` (на pull request и push в `main`, в том числе когда тесты упали) сводит артефакты всех jobs в один отчёт тем же `make report`. В pull request собранный сайт лежит артефактом `site` прогона. На push в `main` job `pages` публикует его на GitHub Pages (`actions/upload-pages-artifact` и `actions/deploy-pages`); Source «GitHub Actions» в настройках Pages включает человек.
 
 ## Хосты на стенде
 
@@ -76,7 +77,7 @@ WS-клиент написан на чистом JS без сборки, но с
 | Codeception unit | Внутри приложений, как в yii2-app-advanced: `common/tests/unit`, `frontend/tests/unit`, `backend/tests/unit`, `console/tests/unit`, `ws/tests/unit`. Корневой `codeception.yml` собирает их все и считает общее покрытие |
 | Codeception REST-regression | `frontend/tests/regression` (гость, REG-G) и `backend/tests/regression` (админ, REG-A) |
 | Vitest | `backend/web/js/__tests__`; хелперы e2e — `e2e/support/__tests__` |
-| Vitest, тесты своих проверок | `tools/checks/__tests__`. Правила rules.md действуют и на них, кроме ID из тест-плана: это тесты инструмента, а не поведения продукта |
+| Vitest, тесты своих инструментов | `tools/checks/__tests__` (свои проверки) и `tools/report/__tests__` (сборка страницы отчёта). Правила rules.md действуют и на них, кроме ID из тест-плана: это тесты инструментов, а не поведения продукта |
 | Playwright | `/e2e` на верхнем уровне проекта, со своим `package.json`. Проекты по набору и ярусу: `smoke`, `regression-ws-parallel`, `regression-ws-exclusive` (REG-WS), `e2e-parallel`, `e2e-exclusive`. Makefile запускает их по очереди в этом порядке |
 
 ## Работа с данными

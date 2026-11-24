@@ -16,7 +16,8 @@ export default defineConfig({
     unstubGlobals: true,
     // ПР-5: тест без проверок падает.
     expect: { requireAssertions: true },
-    reporters: ["default", "junit"],
+    // Junit-отчёт читают tools/checks и CI, Allure-результаты сводит make report вместе с Codeception и Playwright.
+    reporters: ["default", "junit", ["allure-vitest/reporter", { resultsDir: "tests/_output/allure-results" }]],
     outputFile: { junit: "tests/_output/vitest-junit.xml" },
     projects: [
       {
@@ -56,9 +57,11 @@ export default defineConfig({
         // Entry point'ы: только связывают модули, ветвлений в них нет (проверяет tools/checks, правило entrypoint-limits).
         "backend/web/js/main.js",
         "tools/checks/bin.js",
+        "tools/report/bin.js",
       ],
       thresholds: { lines: 100, functions: 100, branches: 100, statements: 100 },
-      reporter: ["text-summary", "lcov"],
+      // Репортёр lcov пишет и HTML (lcov-report), json-summary — итог для страницы отчёта.
+      reporter: ["text-summary", "lcov", "json-summary"],
       reportsDirectory: "tests/_output/coverage-js",
     },
   },

@@ -25,3 +25,6 @@ tests/_output/
 coverage/
 .php-cs-fixer.cache
 .phpcs-cache
+
+# Страница отчёта: make report.
+/site/

@@ -10,6 +10,7 @@
 #                 повторяет он же: TEST_RUN_ID=<id 1> TEST_RUN_ID_2=<id 2> SEED=<seed 1> make test-rerun.
 #                 Вручную: make stand-up, затем make test-no-pristine два раза подряд.
 # Шарды CI:       SHARD=<i>/<n> make test-regression-parallel и т. п. — только для яруса parallel.
+# Отчёт:          make report после make check: Allure и страница отчёта в site/ (открыть site/index.html).
 
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -57,7 +58,7 @@ PLAYWRIGHT_SHARD := $(if $(SHARD),--shard=$(SHARD),)
 	stand-up stand-down stand-logs test-unit test-unit-php test-unit-js test-smoke test-regression \
 	test-regression-pristine test-regression-parallel test-regression-exclusive \
 	test-regression-ws-parallel test-regression-ws-exclusive test-e2e test-e2e-parallel test-e2e-exclusive \
-	test-no-pristine coverage check test-rerun run-id
+	test-no-pristine coverage check test-rerun run-id report
 
 help: ## Список целей
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-30s %s\n", $$1, $$2}'
@@ -154,9 +155,9 @@ test-unit: test-unit-php test-unit-js ## Unit PHP и JS с порогом пок
 
 # Unit-тесты репозиториев ходят в тестовую Postgres, поэтому PHP-unit идёт на поднятом стенде.
 test-unit-php: stand-up
-	rm -rf tests/_output/coverage-php.xml tests/_output/junit-php.xml
+	rm -rf tests/_output/coverage-php.xml tests/_output/coverage-php-html tests/_output/junit-php.xml
 	$(PHP_STAND) php -d pcov.enabled=1 vendor/bin/codecept run '*::unit' $(CODECEPT_SEED) \
-		--xml junit-php.xml --coverage-xml coverage-php.xml --coverage-cobertura cobertura-php.xml
+		--xml junit-php.xml --coverage-xml coverage-php.xml --coverage-cobertura cobertura-php.xml --coverage-html coverage-php-html
 	$(NODE_RUN) node tools/checks/bin.js junit tests/_output/junit-php.xml
 	$(NODE_RUN) node tools/checks/bin.js coverage tests/_output/coverage-php.xml --strip=/app/
 
@@ -210,6 +211,7 @@ coverage: test-unit ## Покрытие: clover и cobertura PHP в tests/_outpu
 	@echo "JS:  tests/_output/coverage-js/lcov.info"
 
 check: ## lint → unit → админ для smoke → smoke → regression → e2e на свежем тестовом стенде, после прогона стенд сносится
+	rm -rf $(ALLURE_RESULTS)
 	$(MAKE) lint
 	$(MAKE) stand-down
 	trap '$(MAKE) stand-down' EXIT; \
@@ -219,6 +221,7 @@ check: ## lint → unit → админ для smoke → smoke → regression →
 # чтобы не стереть админа: тогда make admin второго прохода упирается в существующего и проверяет идемпотентность.
 # Второй проход — всё, кроме pristine, без stand-down, с другим TEST_RUN_ID (TEST_RUN_ID_2) и другим seed порядка.
 test-rerun: ## pristine → admin → smoke → regression → e2e, затем всё, кроме pristine, ещё раз на том же стенде; после прогона стенд сносится
+	rm -rf $(ALLURE_RESULTS)
 	$(MAKE) stand-down
 	trap '$(MAKE) stand-down' EXIT; \
 		first_seed=$(if $(SEED),$(SEED),$$(od -An -N4 -tu4 /dev/urandom | awk 'NF { print $$1 % 2147483647; exit }')); \
@@ -236,6 +239,28 @@ test-rerun: ## pristine → admin → smoke → regression → e2e, затем �
 		echo "[test-rerun] проход 2 на том же стенде: TEST_RUN_ID=$$second_run_id SEED=$$second_seed" && \
 		$(MAKE) admin TEST_RUN_ID=$$second_run_id && $(MAKE) test-smoke TEST_RUN_ID=$$second_run_id && \
 		$(MAKE) test-no-pristine TEST_RUN_ID=$$second_run_id SEED=$$second_seed
+
+# --- Отчёт -------------------------------------------------------------------
+
+# Allure-результаты пишут все три раннера (codeception.yml, vitest.config.js, e2e/playwright.config.ts).
+ALLURE_RESULTS := tests/_output/allure-results
+ALLURE_PREPARED := tests/_output/allure-prepared
+# Ссылки страницы ведут на файлы по SHA прогона. CI передаёт свои значения, локально — из git.
+REPORT_REPO ?= $(shell git remote get-url origin 2>/dev/null)
+REPORT_SHA ?= $(shell git rev-parse HEAD 2>/dev/null)
+
+# Сводит то, что лежит в tests/_output после make check (в CI — артефакты всех jobs): результаты готовятся
+# (имя теста из плана, группы «набор → ID»), из них собирается отчёт Allure 3, рядом — страница и HTML покрытия.
+report: ## Отчёт после make check: Allure, покрытие и главная страница в site/
+	rm -rf site $(ALLURE_PREPARED)
+	mkdir -p site/coverage $(ALLURE_RESULTS)
+	$(NODE_RUN) node tools/report/bin.js --results=$(ALLURE_RESULTS) --prepared=$(ALLURE_PREPARED) \
+		--php-coverage=tests/_output/coverage-php.xml --js-coverage=tests/_output/coverage-js/coverage-summary.json \
+		--page=site/index.html --repo='$(REPORT_REPO)' --sha='$(REPORT_SHA)'
+	$(NODE_RUN) node_modules/.bin/allure generate $(ALLURE_PREPARED) --output site/allure
+	if [ -d tests/_output/coverage-php-html ]; then cp -R tests/_output/coverage-php-html site/coverage/php; fi
+	if [ -d tests/_output/coverage-js/lcov-report ]; then cp -R tests/_output/coverage-js/lcov-report site/coverage/js; fi
+	@echo "Отчёт: site/index.html"
 
 # CI генерирует id первым шагом job и кладёт его в $GITHUB_ENV: каждый шаг — отдельный make, а id нужен один на job.
 run-id: ## Напечатать TEST_RUN_ID (сгенерированный, если не задан)
