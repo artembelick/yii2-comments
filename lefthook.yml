@@ -1,0 +1,35 @@
+# Хуки git. Установка на хосте: brew install lefthook && lefthook install (Node на хосте не нужен).
+# Сами линтеры и тесты идут в контейнерах через make.
+
+pre-commit:
+  parallel: false
+  commands:
+    php:
+      glob: "*.php"
+      run: make lint-php-files FILES="{staged_files}"
+    js:
+      glob: "*.{js,ts,json}"
+      exclude:
+        - "tools/checks/__tests__/fixtures/**"
+        - "**/package-lock.json"
+      run: make lint-js-files FILES="{staged_files}"
+    types:
+      glob: "*.{js,ts}"
+      # tsc проверяет проект целиком: типы связывают файлы между собой.
+      run: make lint-js-types
+    composer:
+      glob: "composer.{json,lock}"
+      run: docker compose -p comments-test --env-file .env.test -f docker-compose.yml -f docker-compose.test.yml run --rm --no-deps -T php composer validate --strict
+    dockerfile:
+      glob: "**/Dockerfile"
+      run: make lint-docker
+    checks:
+      # Свои проверки (запреты, сверка ID) быстрые и смотрят на связи между файлами и планами, поэтому идут по всему дереву.
+      glob: "*.{php,js,ts,md}"
+      run: make lint-checks
+
+pre-push:
+  commands:
+    unit:
+      # Unit-тесты репозиториев ходят в тестовую Postgres: make test-unit поднимает тестовый стенд, если он не запущен.
+      run: make test-unit

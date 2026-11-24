@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 120,
+  "sortImports": {},
+  "ignorePatterns": [
+    "vendor/**",
+    "**/web/assets/**",
+    "**/tests/_output/**",
+    "e2e/test-results/**",
+    "e2e/playwright-report/**",
+    "tools/checks/__tests__/fixtures/**",
+    "*.md",
+    "composer.lock",
+    "package-lock.json",
+    "e2e/package-lock.json"
+  ]
+}

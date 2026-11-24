@@ -1,0 +1,29 @@
+includes:
+    - vendor/phpstan/phpstan-strict-rules/rules.neon
+    - vendor/phpstan/phpstan-deprecation-rules/rules.neon
+    - vendor/yii2-extensions/phpstan/extension.neon
+
+# bleedingEdge не подключён намеренно: правила будущих версий phpstan меняются при обновлении
+# и дают шум на магии Yii2 (docs/test-plans/README.md, «Линтеры»).
+parameters:
+    level: max
+    paths:
+        - common
+        - frontend
+        - backend
+        - console
+        - ws
+        - yii
+    excludePaths:
+        analyseAndScan:
+            - */runtime/*
+            - */web/assets/*
+            - */tests/_output/*
+        analyse:
+            # Генерирует Codeception, правится только через `codecept build`.
+            - */tests/_support/_generated/*
+    bootstrapFiles:
+        - vendor/yiisoft/yii2/Yii.php
+        - common/config/bootstrap.php
+    yii2:
+        config_path: phpstan-yii.php

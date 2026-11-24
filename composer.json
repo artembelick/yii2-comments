@@ -1,0 +1,60 @@
+{
+  "name": "comments/app",
+  "description": "Система комментариев на Yii2: публичная лента, админка и WebSocket-события",
+  "type": "project",
+  "license": "proprietary",
+  "require": {
+    "php": "~8.3.0",
+    "ext-intl": "*",
+    "ext-pcntl": "*",
+    "ext-pdo_pgsql": "*",
+    "psr/clock": "^1.0",
+    "symfony/clock": "^7.4",
+    "workerman/redis": "^2.1",
+    "workerman/workerman": "^5.2",
+    "yiisoft/yii2": "~2.0.55",
+    "yiisoft/yii2-bootstrap5": "^2.0.52",
+    "yiisoft/yii2-redis": "^2.1.3"
+  },
+  "require-dev": {
+    "codeception/codeception": "^5.3",
+    "codeception/module-asserts": "^3.3",
+    "codeception/module-phpbrowser": "^4.1",
+    "codeception/module-rest": "^3.4",
+    "codeception/module-yii2": "^2.0.5",
+    "fakerphp/faker": "^1.24",
+    "friendsofphp/php-cs-fixer": "^3.95",
+    "phpstan/phpstan": "^2.3",
+    "phpstan/phpstan-deprecation-rules": "^2.0",
+    "phpstan/phpstan-strict-rules": "^2.0",
+    "rector/rector": "^2.8",
+    "slevomat/coding-standard": "^8.31",
+    "squizlabs/php_codesniffer": "^4.0",
+    "yii2-extensions/phpstan": "^0.6"
+  },
+  "autoload": {
+    "psr-4": {
+      "backend\\": "backend/",
+      "common\\": "common/",
+      "console\\": "console/",
+      "frontend\\": "frontend/",
+      "ws\\": "ws/"
+    }
+  },
+  "config": {
+    "platform": {
+      "php": "8.3.37"
+    },
+    "sort-packages": true,
+    "allow-plugins": {
+      "dealerdirect/phpcodesniffer-composer-installer": true,
+      "yiisoft/yii2-composer": true
+    }
+  },
+  "repositories": [
+    {
+      "type": "composer",
+      "url": "https://asset-packagist.org"
+    }
+  ]
+}

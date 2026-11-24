@@ -1,0 +1,105 @@
+# Запуски по таблице «Запуски» из docs/test-plans/README.md:
+# - push в любую ветку: lint и unit с покрытием;
+# - pull request и push в main: весь make check, разбитый на jobs (ярус parallel — шардами, pristine и exclusive — одним job);
+# - раз в сутки: весь make check дважды с разными seed случайного порядка.
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/install
+      - run: make lint
+
+  unit:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/install
+      - run: make test-unit
+      - uses: ./.github/actions/reports
+        if: always()
+        with:
+          name: unit
+
+  # Ярус parallel: каждый шард — отдельный job со своим стендом, и сначала smoke.
+  parallel:
+    needs: [lint, unit]
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    env:
+      SHARD: ${{ matrix.shard }}/2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/install
+      - run: make stand-up
+      - run: make test-smoke
+      - run: make test-regression-parallel
+      - run: make test-regression-ws-parallel
+      - run: make test-e2e-parallel
+      - uses: ./.github/actions/reports
+        if: always()
+        with:
+          name: parallel-${{ matrix.shard }}
+      - run: make stand-down
+        if: always()
+
+  # pristine и exclusive: строго последовательно, одним job на пустой БД.
+  serial:
+    needs: [lint, unit]
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/install
+      - run: make stand-up
+      - run: make test-smoke
+      - run: make test-regression-pristine
+      - run: make test-regression-exclusive
+      - run: make test-regression-ws-exclusive
+      - run: make test-e2e-exclusive
+      - uses: ./.github/actions/reports
+        if: always()
+        with:
+          name: serial
+      - run: make stand-down
+        if: always()
+
+  # Ночной прогон: два полных make check с разными seed ловят зависимость тестов друг от друга.
+  nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/install
+      - name: make check
+        run: |
+          seed=$(( (RANDOM << 15 | RANDOM) + ${{ matrix.run }} ))
+          echo "Seed: $seed"
+          make check SEED="$seed"
+      - uses: ./.github/actions/reports
+        if: always()
+        with:
+          name: nightly-${{ matrix.run }}

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="1"><project timestamp="1">
+<file name="/app/common/web/PlaceholderController.php"><metrics loc="19" ncloc="15" classes="1" methods="1" coveredmethods="1" statements="1" coveredstatements="1" elements="2" coveredelements="2"/></file>
+</project></coverage>

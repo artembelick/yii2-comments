@@ -38,7 +38,7 @@ WS-клиент написан на чистом JS без сборки, но с
 **Прочее:** hadolint для Dockerfile, `composer validate --strict`, сверка ID из тест-планов с именами тестов.
 
 **Строгость тестов:**
-- **Тест без проверок — ошибка.** В PHPUnit включены `failOnRisky`, `failOnWarning`, `failOnDeprecation` и `beStrictAboutTestsThatDoNotTestAnything`. В Vitest правило линтера требует `expect.hasAssertions()`.
+- **Тест без проверок — ошибка.** PHP: Codeception с `report_useless_tests`, `convert_deprecations_to_exceptions` и `error_level: E_ALL`; сам Codeception падает только на error и failure, поэтому тесты без проверок, пропуски и предупреждения роняет `tools/checks junit` по junit-отчёту. В Vitest это делает `expect.requireAssertions` в конфиге: тест без проверок падает при запуске.
 - **Часовой пояс тестовых процессов зафиксирован: `TZ=UTC`** в PHP и в Vitest. Часовой пояс отображения (Europe/Moscow) передаётся явно.
 - **Playwright:**
   - `retries: 0`, потому что флейк считается багом;
@@ -74,6 +74,7 @@ WS-клиент написан на чистом JS без сборки, но с
 | Codeception unit | Внутри приложений, как в yii2-app-advanced: `common/tests/unit`, `frontend/tests/unit`, `backend/tests/unit`, `console/tests/unit`, `ws/tests/unit`. Корневой `codeception.yml` собирает их все и считает общее покрытие |
 | Codeception REST-regression | `frontend/tests/regression` (гость, REG-G) и `backend/tests/regression` (админ, REG-A) |
 | Vitest | `backend/web/js/__tests__` |
+| Vitest, тесты своих проверок | `tools/checks/__tests__`. Правила rules.md действуют и на них, кроме ID из тест-плана: это тесты инструмента, а не поведения продукта |
 | Playwright | `/e2e` на верхнем уровне проекта, со своим `package.json`. Проекты по набору и ярусу: `smoke`, `regression-ws-parallel`, `regression-ws-exclusive` (REG-WS), `e2e-parallel`, `e2e-exclusive`. Makefile запускает их по очереди в этом порядке |
 
 ## Работа с данными

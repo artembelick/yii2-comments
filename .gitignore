@@ -1,10 +1,27 @@
 .DS_Store
 /vendor/
 node_modules/
-runtime/
-/e2e/test-results/
-/e2e/playwright-report/
-tests/_output/
-coverage/
+# Рабочие каталоги Yii. Без общего правила runtime/: оно прятало ws/runtime и фикстуры tools/checks.
+/common/runtime/
+/frontend/runtime/
+/backend/runtime/
+/console/runtime/
+.composer-cache/
 .env
 .env.test.local
+
+# Ассеты, которые Yii публикует при запросе.
+/frontend/web/assets/*
+/backend/web/assets/*
+!/frontend/web/assets/.gitkeep
+!/backend/web/assets/.gitkeep
+
+# Отчёты тестов и линтеров.
+tests/_output/
+*/tests/_output/
+*/tests/_support/_generated/
+/e2e/test-results/
+/e2e/playwright-report/
+coverage/
+.php-cs-fixer.cache
+.phpcs-cache

@@ -1,0 +1,96 @@
+# Dev-стенд. Тестовый стенд — тот же файл плюс docker-compose.test.yml в проекте comments-test (см. Makefile).
+name: comments
+
+x-php: &php
+  build:
+    context: docker/php
+    target: dev
+  image: comments-php:dev
+  env_file: ${APP_ENV_FILE:-.env}
+  environment:
+    TZ: UTC
+  volumes:
+    - .:/app
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  php:
+    <<: *php
+
+  ws:
+    <<: *php
+    command: ["php", "ws/runtime/server.php", "start"]
+
+  nginx:
+    image: nginx:1.30.4-alpine
+    env_file: ${APP_ENV_FILE:-.env}
+    ports:
+      - "${NGINX_PORT:-8080}:${NGINX_PORT:-8080}"
+    volumes:
+      - ./docker/nginx/templates:/etc/nginx/templates:ro
+      - ./frontend/web:/app/frontend/web:ro
+      - ./backend/web:/app/backend/web:ro
+    depends_on:
+      - php
+      - ws
+    networks:
+      default:
+        aliases:
+          - comments.localhost
+          - admin.comments.localhost
+
+  postgres:
+    image: postgres:15.20-alpine
+    env_file: ${APP_ENV_FILE:-.env}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7.4.12-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Инструменты запускаются через `docker compose run`, в `up` не стартуют.
+  node:
+    image: node:22.23.1-bookworm-slim
+    profiles: [tools]
+    working_dir: /app
+    env_file: ${APP_ENV_FILE:-.env}
+    environment:
+      TZ: UTC
+    volumes:
+      - .:/app
+
+  playwright:
+    # Версия образа совпадает с @playwright/test в e2e/package.json.
+    image: mcr.microsoft.com/playwright:v1.65.1-noble
+    profiles: [tools]
+    working_dir: /app/e2e
+    env_file: ${APP_ENV_FILE:-.env}
+    environment:
+      TZ: UTC
+    ipc: host
+    volumes:
+      - .:/app
+
+  hadolint:
+    image: hadolint/hadolint:v2.15.1-debian
+    profiles: [tools]
+    working_dir: /app
+    volumes:
+      - .:/app:ro
+
+volumes:
+  postgres:

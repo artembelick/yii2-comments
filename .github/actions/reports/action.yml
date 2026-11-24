@@ -1,0 +1,17 @@
+name: Reports
+description: Отчёты junit, покрытие, trace и скриншоты Playwright как артефакты прогона.
+inputs:
+  name:
+    description: Суффикс имени артефакта
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/upload-artifact@v4
+      with:
+        name: reports-${{ inputs.name }}
+        if-no-files-found: ignore
+        path: |
+          tests/_output/
+          e2e/test-results/
+          e2e/playwright-report/
