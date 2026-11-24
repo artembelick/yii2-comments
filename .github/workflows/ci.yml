@@ -20,7 +20,7 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/install
       - run: make lint
 
@@ -28,7 +28,7 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/install
       - run: make test-unit
       - uses: ./.github/actions/reports
@@ -48,7 +48,7 @@ jobs:
     env:
       SHARD: ${{ matrix.shard }}/2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/install
       - run: make stand-up
       - run: make admin
@@ -72,7 +72,7 @@ jobs:
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/install
       - run: make stand-up
       - run: make admin
@@ -100,7 +100,7 @@ jobs:
       matrix:
         run: [1, 2]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/install
       - name: make check
         run: |
