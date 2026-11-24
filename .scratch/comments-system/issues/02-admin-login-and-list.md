@@ -19,5 +19,6 @@
 - [ ] Миграции таблиц `user` и `comment`, каталог сообщений `tests/_data/messages.json` и файлы переводов Yii
 - [ ] Перечисленные тесты зелёные, покрытие 100%
 - [ ] `make admin` создаёт админа для smoke из `.env.test`
+- [ ] Временные послабления среза 01 сняты: флаг `--allow-empty` у `tools/checks` убран из Makefile, `make check` вызывает `make admin` перед smoke, заглушка `PlaceholderController` больше не отвечает на корне админки
 - [ ] `make check` и CI зелёные, кроме E2E-01, который падает на шаге 3
 - [ ] `/code-review` среза пройден

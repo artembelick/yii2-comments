@@ -42,19 +42,20 @@
 | `SMOKE_ADMIN_LOGIN`, `SMOKE_ADMIN_PASSWORD` | Админ для smoke, его создаёт `make admin` |
 
 
-- [ ] Ветка `main`, `.gitignore` (в том числе `.DS_Store`, `vendor`, `node_modules`, `runtime`, отчёты тестов)
-- [ ] Скелет yii2-app-advanced: common, frontend, backend, console и каталог ws. Signup, сброс пароля и верификация email удалены. Механизм `php init` и каталог `environments/` удалены, `index.php` лежат в git
-- [ ] Dev-compose с зафиксированными версиями образов: php 8.3-fpm (dev-образ с Xdebug), nginx, Postgres 15, Redis 7, заглушка `ws` на том же PHP-образе, `node` (Node 22 LTS) для JS-линтеров и Vitest, `playwright` на официальном образе той же версии, что пакет `@playwright/test`
-- [ ] nginx отдаёт обе части на `comments.localhost` и `admin.comments.localhost` и проксирует `/ws` на хосте админки. У контейнера nginx есть network alias'ы на оба имени
-- [ ] Тестовый стенд: отдельный compose-проект (`-p comments-test`) со своими БД `comments_test`, Redis, ws, nginx и `YII_ENV=test`. Поднимается, применяет миграции, после прогона сносится
-- [ ] Раннеры: Codeception (unit по приложениям и REST-regression, pcov, порог 100%, строгие флаги PHPUnit, случайный порядок с напечатанным seed), Vitest (jsdom, coverage-v8 с порогом 100%, `TZ=UTC`, shuffle), Playwright в своём контейнере (проекты `smoke`, `regression-ws-parallel`, `regression-ws-exclusive`, `e2e-parallel`, `e2e-exclusive` по «Где лежат тесты» в `docs/test-plans/README.md`; `retries: 0`, trace и скриншот при падении, `forbidOnly`, Chromium с `--host-resolver-rules="MAP *.localhost nginx"`)
-- [ ] Каркас `e2e/support`: `factories.ts` (pg), `redis.ts` (сброс счётчиков лимита), seed Faker из ID теста
-- [ ] Линтеры из раздела «Линтеры и правила тестов» в `docs/test-plans/README.md`: phpstan, php-cs-fixer, rector `--dry-run`, phpcs со slevomat, oxlint, oxfmt `--check`, `tsc --noEmit` с `checkJs`, hadolint, `composer validate --strict`. Каждое отключённое правило в конфиге с комментарием «почему», baseline нет
-- [ ] Свои проверки: запрет inline-отключений, `skip` и `only`; лимит «без ветвлений и циклов, до 60 строк» для `ws/runtime` и `main.js`; сверка ID в именах тестов с `docs/test-plans/`; запреты из `docs/test-plans/rules.md` (ДТ-1, ДТ-3, ЧТ-4, БР-1, ПР-4)
-- [ ] Цели `make up`, `make down`, `make install`, `make migrate`, `make lint`, `make fix`, `make admin`, `make test-unit`, `make test-smoke`, `make test-regression`, `make test-e2e`, `make coverage`, `make check`. Порядок `make check`: lint → unit → smoke → regression → e2e
-- [ ] lefthook: pre-commit линтеры по изменённым файлам, pre-push `make test-unit`
-- [ ] GitHub Actions по таблице «Запуски» из `docs/test-plans/README.md`: push → lint и unit; PR и `main` → весь `make check`, разбитый на jobs, с шардами яруса `parallel`; ночной двойной прогон с разными seed. Отчёты и trace сохраняются как артефакты
-- [ ] Обе части отвечают 200, порт nginx записан в README
+- [x] Ветка `main`, `.gitignore` (в том числе `.DS_Store`, `vendor`, `node_modules`, `runtime`, отчёты тестов)
+- [x] Скелет yii2-app-advanced: common, frontend, backend, console и каталог ws. Signup, сброс пароля и верификация email удалены. Механизм `php init` и каталог `environments/` удалены, `index.php` лежат в git
+- [x] Dev-compose с зафиксированными версиями образов: php 8.3-fpm (dev-образ с Xdebug), nginx, Postgres 15, Redis 7, заглушка `ws` на том же PHP-образе, `node` (Node 22 LTS) для JS-линтеров и Vitest, `playwright` на официальном образе той же версии, что пакет `@playwright/test`
+- [x] nginx отдаёт обе части на `comments.localhost` и `admin.comments.localhost` и проксирует `/ws` на хосте админки. У контейнера nginx есть network alias'ы на оба имени
+- [x] Тестовый стенд: отдельный compose-проект (`-p comments-test`) со своими БД `comments_test`, Redis, ws, nginx и `YII_ENV=test`. Поднимается, применяет миграции, после прогона сносится
+- [x] Раннеры: Codeception (unit по приложениям и REST-regression, pcov, порог 100%, строгие флаги PHPUnit, случайный порядок с напечатанным seed), Vitest (jsdom, coverage-v8 с порогом 100%, `TZ=UTC`, shuffle), Playwright в своём контейнере (проекты `smoke`, `regression-ws-parallel`, `regression-ws-exclusive`, `e2e-parallel`, `e2e-exclusive` по «Где лежат тесты» в `docs/test-plans/README.md`; `retries: 0`, trace и скриншот при падении, `forbidOnly`, Chromium с `--host-resolver-rules="MAP *.localhost nginx"`)
+- [x] Каркас `e2e/support`: `factories.ts` (pg), `redis.ts` (сброс счётчиков лимита), seed Faker из ID теста
+- [x] Линтеры из раздела «Линтеры и правила тестов» в `docs/test-plans/README.md`: phpstan, php-cs-fixer, rector `--dry-run`, phpcs со slevomat, oxlint, oxfmt `--check`, `tsc --noEmit` с `checkJs`, hadolint, `composer validate --strict`. Каждое отключённое правило в конфиге с комментарием «почему», baseline нет
+- [x] Свои проверки: запрет inline-отключений, `skip` и `only`; лимит «без ветвлений и циклов, до 60 строк» для `ws/runtime` и `main.js`; сверка ID в именах тестов с `docs/test-plans/`; запреты из `docs/test-plans/rules.md` (ДТ-1, ДТ-3, ЧТ-4, БР-1, ПР-4)
+- [x] Цели `make up`, `make down`, `make install`, `make migrate`, `make lint`, `make fix`, `make admin`, `make test-unit`, `make test-smoke`, `make test-regression`, `make test-e2e`, `make coverage`, `make check`. Порядок `make check`: lint → unit → smoke → regression → e2e
+- [x] lefthook: pre-commit линтеры по изменённым файлам, pre-push `make test-unit`
+- [x] GitHub Actions по таблице «Запуски» из `docs/test-plans/README.md`: push → lint и unit; PR и `main` → весь `make check`, разбитый на jobs, с шардами яруса `parallel`; ночной двойной прогон с разными seed. Отчёты и trace сохраняются как артефакты
+- [x] Обе части отвечают 200, порт nginx записан в README
+- [ ] CI на GitHub зелёный на первом PR
 
 ## Comments
 
